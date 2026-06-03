@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(not exist:*)",
+      "Bash(find /d/03.Dev/01.Project/01.AttendanceClientV3/AttendanceClient/attandance_client/lib -type f -name \"*.dart\" -exec grep -l \"class.*Color\\\\|class.*Theme\\\\|class.*AppColor\" {} \\\\;)",
+      "Bash(flutter analyze:*)",
+      "Bash(python3 -c \"import sys,json; pkgs=json.load\\(sys.stdin\\)['packages']; [print\\(p['name'],p.get\\('rootUri',''\\)\\) for p in pkgs if 'syncfusion' in p['name'].lower\\(\\)]\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(p['name'], p.get\\('rootUri',''\\)\\) for p in data['packages'] if 'syncfusion' in p['name'].lower\\(\\) or 'flutter_core' in p['name'].lower\\(\\)]\")"
+    ]
+  }
+}

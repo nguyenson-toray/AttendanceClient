@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/son.nt/AppData/Local/Pub/Cache/hosted/pub.dev/syncfusion_flutter_datagrid-31.1.19/lib/**)"
+    ]
+  }
+}
