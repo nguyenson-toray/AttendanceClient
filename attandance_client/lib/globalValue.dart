@@ -4,6 +4,8 @@ import 'package:attandance_client/model/employee.dart';
 import 'package:attandance_client/model/history.dart';
 import 'package:attandance_client/model/otRegister.dart';
 import 'package:attandance_client/model/shiftRegister.dart';
+import 'package:attandance_client/model/shift_param.dart';
+import 'package:attandance_client/model/timesheetSettings.dart';
 import 'package:attandance_client/services/update_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -54,9 +56,7 @@ class GValue {
 
   UpdateInfo? pendingUpdate;
 
-  // Timesheet settings
-  int minOtMinute = 30;
-  int otBlockMinute = 30;
-  int workingBlockMinute = 1;
-  bool allowOtInRestTime = false;
+  // Shift params & Timesheet settings
+  List<ShiftParam> shiftParams = [];
+  TimesheetSettings timesheetSettings = TimesheetSettings();
 }

@@ -38,23 +38,33 @@ class TimesheetResult {
 // ── TimesheetFunctions ────────────────────────────────────────────────────────
 
 class TimesheetFunctions {
-  // ── Shift constants ─────────────────────────────────────────────────────────
-  //   Day    : 08:00–17:00, restHour=1  → lunch 12:00–13:00
-  //   Canteen    : 07:00–16:00, restHour=1  → lunch 11:00–12:00
-  //   Shift 1: 06:00–14:00, restHour=0  → no lunch deduction
-  //   Shift 2: 14:00–22:00, restHour=0  → no lunch deduction
-  static const _shiftParams = <String, _ShiftParam>{
+  // ── Shift defaults (fallback when DB has no records) ─────────────────────
+  static const _defaultShiftParams = <String, _ShiftParam>{
     'Day': _ShiftParam(8, 0, 17, 0, 1),
     'Shift 1': _ShiftParam(6, 0, 14, 0, 0),
     'Shift 2': _ShiftParam(14, 0, 22, 0, 0),
-    'Canteen': _ShiftParam(7, 0, 16, 0, 1), // same as Day — adjust if needed
+    'Canteen': _ShiftParam(7, 0, 16, 0, 1),
   };
+
+  /// Find shift param from DB for a given shift name and date.
+  /// Falls back to hardcoded defaults if no matching DB record.
+  static _ShiftParam _getShiftParam(String shiftName, DateTime date) {
+    final match = App.gValue.shiftParams.where((s) =>
+        s.name == shiftName &&
+        !date.isBefore(s.effectiveFrom) &&
+        !date.isAfter(s.effectiveTo));
+    if (match.isNotEmpty) {
+      final s = match.first;
+      return _ShiftParam(s.beginHour, s.beginMin, s.endHour, s.endMin, s.restHour);
+    }
+    return _defaultShiftParams[shiftName] ?? _defaultShiftParams['Day']!;
+  }
 
   /// Floor OT hours to nearest block.
   /// Returns 0 if total minutes < minOtMinute.
   static double _floorToBlock(double hours) {
-    final minOtMin = App.gValue.minOtMinute;
-    final otBlock = App.gValue.otBlockMinute;
+    final minOtMin = App.gValue.timesheetSettings.minOtMinute;
+    final otBlock = App.gValue.timesheetSettings.otBlockMinute;
     final totalMin = (hours * 60).floor();
     if (totalMin < minOtMin) return 0;
     final blockedMin = (totalMin ~/ otBlock) * otBlock;
@@ -63,7 +73,7 @@ class TimesheetFunctions {
 
   /// Floor working hours to nearest working block.
   static double _floorWorkingToBlock(double hours) {
-    final workBlock = App.gValue.workingBlockMinute;
+    final workBlock = App.gValue.timesheetSettings.workingBlockMinute;
     if (workBlock <= 1) return hours;
     final totalMin = (hours * 60).floor();
     final blockedMin = (totalMin ~/ workBlock) * workBlock;
@@ -120,6 +130,12 @@ class TimesheetFunctions {
       datesWithLogs.add(dk);
       (logIndex[dk] ??= {}).putIfAbsent(l.empId, () => []).add(l);
     }
+    // remove employees have workStatus = 'reSigned' and resignOn.year = 2099
+    employees.removeWhere(
+      (e) =>
+          (e.workStatus ?? '').contains('Resigned') &&
+          (e.resignOn == null || e.resignOn!.year >= 2099),
+    );
 
     // ShiftRegisters → Map<dayKey, Map<shiftName, Set<empId>>>
     final shiftIndex = <String, Map<String, Set<String>>>{};
@@ -188,7 +204,7 @@ class TimesheetFunctions {
         if (date.weekday == DateTime.sunday)
           shift = 'Day'; // Sunday always Day base
 
-        final p = _shiftParams[shift] ?? _shiftParams['Day']!;
+        final p = _getShiftParam(shift, date);
         var shiftBegin = DateTime.utc(
           date.year,
           date.month,
@@ -301,8 +317,10 @@ class TimesheetFunctions {
 
             // Base OT = time after shiftEnd (before consulting OT register)
             otActual = _floorToBlock(
-              (lo.difference(shiftEnd).inMinutes / 60.0)
-                  .clamp(0.0, double.infinity),
+              (lo.difference(shiftEnd).inMinutes / 60.0).clamp(
+                0.0,
+                double.infinity,
+              ),
             );
 
             if (empIdOT.contains(emp.empId)) {
@@ -357,7 +375,8 @@ class TimesheetFunctions {
                 otFinal = otRes.otFinal;
               }
 
-              if (otRestHour && App.gValue.allowOtInRestTime) {
+              if (otRestHour &&
+                  App.gValue.timesheetSettings.allowOtInRestTime) {
                 otActual += p.restHour;
                 otApproved += p.restHour;
                 noteCheckin = _note(noteCheckin, 'OT giờ nghỉ trưa');
@@ -405,10 +424,10 @@ class TimesheetFunctions {
 
           // 3. Came in ≥1h early but no OT register covering before-shift
           if (shiftBegin.difference(firstIn).inMinutes >= 60) {
-            bool hasBefore = empIdOT.contains(emp.empId) &&
+            bool hasBefore =
+                empIdOT.contains(emp.empId) &&
                 (otByEmp[emp.empId] ?? []).any((r) {
-                  final eh =
-                      int.tryParse(r.otTimeEnd.split(':')[0]) ?? 0;
+                  final eh = int.tryParse(r.otTimeEnd.split(':')[0]) ?? 0;
                   return eh <= shiftBegin.hour;
                 });
             if (!hasBefore) {
@@ -421,10 +440,10 @@ class TimesheetFunctions {
 
           // 4. Left ≥1h late but no OT register covering after-shift
           if (lastOut.difference(shiftEnd).inMinutes >= 60) {
-            bool hasAfter = empIdOT.contains(emp.empId) &&
+            bool hasAfter =
+                empIdOT.contains(emp.empId) &&
                 (otByEmp[emp.empId] ?? []).any((r) {
-                  final bh =
-                      int.tryParse(r.otTimeBegin.split(':')[0]) ?? 0;
+                  final bh = int.tryParse(r.otTimeBegin.split(':')[0]) ?? 0;
                   return bh >= shiftEnd.hour;
                 });
             if (!hasAfter) {
@@ -576,7 +595,8 @@ class TimesheetFunctions {
     if (sundayFullRec != null) {
       final beginOT = _parseShiftTime(date, sundayFullRec.otTimeBegin)!;
       final endOT = _parseShiftTime(date, sundayFullRec.otTimeEnd)!;
-      double otApproved = endOT.difference(beginOT).inMinutes / 60.0 - 1; // deduct lunch
+      double otApproved =
+          endOT.difference(beginOT).inMinutes / 60.0 - 1; // deduct lunch
       double otActual = baseOtActual;
       if (fi.isBefore(shiftBegin) && fi.hour <= shiftBegin.hour) {
         otActual = (shiftBegin.difference(fi).inMinutes / 60.0).clamp(
@@ -596,7 +616,8 @@ class TimesheetFunctions {
         final b = _parseShiftTime(date, rec.otTimeBegin);
         final e = _parseShiftTime(date, rec.otTimeEnd);
         if (b == null || e == null) continue;
-        if (earliestBegin == null || b.isBefore(earliestBegin)) earliestBegin = b;
+        if (earliestBegin == null || b.isBefore(earliestBegin))
+          earliestBegin = b;
         if (latestEnd == null || e.isAfter(latestEnd)) latestEnd = e;
       }
       if (earliestBegin != null && latestEnd != null) {
@@ -608,8 +629,10 @@ class TimesheetFunctions {
         );
         double rawActual = fi.isBefore(earliestStart)
             ? otApproved
-            : (shiftBegin.difference(fi).inMinutes / 60.0)
-                  .clamp(0.0, double.infinity);
+            : (shiftBegin.difference(fi).inMinutes / 60.0).clamp(
+                0.0,
+                double.infinity,
+              );
         final otActual = _floorToBlock(rawActual);
         final double otFinal = otActual.clamp(0.0, otApproved);
 
@@ -627,7 +650,8 @@ class TimesheetFunctions {
         final b = _parseShiftTime(date, rec.otTimeBegin);
         final e = _parseShiftTime(date, rec.otTimeEnd);
         if (b == null || e == null) continue;
-        if (earliestBegin == null || b.isBefore(earliestBegin)) earliestBegin = b;
+        if (earliestBegin == null || b.isBefore(earliestBegin))
+          earliestBegin = b;
         if (latestEnd == null || e.isAfter(latestEnd)) latestEnd = e;
       }
       if (earliestBegin != null && latestEnd != null) {

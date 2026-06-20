@@ -38,25 +38,30 @@ class _AttTabState extends State<AttTab> {
 
   void _handleAttCellAction(DataGridCellTapDetails details) {
     if (App.gValue.permission != 'edit') return;
-    final rowIndex = details.rowColumnIndex.rowIndex - 1;
-    if (rowIndex < 0 || rowIndex >= attLogDataSource.rows.length) return;
-    final cells = attLogDataSource.rows[rowIndex].getCells();
+    final visualIndex = details.rowColumnIndex.rowIndex - 1;
+    final effectiveRows = attLogDataSource.effectiveRows;
+    if (visualIndex < 0 || visualIndex >= effectiveRows.length) return;
+    final row = effectiveRows[visualIndex];
+    final cells = row.getCells();
     final empId =
         cells.firstWhere((c) => c.columnName == 'empID').value as String;
     final name =
         cells.firstWhere((c) => c.columnName == 'name').value as String;
     final ts =
         cells.firstWhere((c) => c.columnName == 'timestamp').value as DateTime;
-    final objectId = attLogDataSource.getObjectId(rowIndex);
+    // Find the actual data source index for this row
+    final dataIndex = attLogDataSource.rows.indexOf(row);
+    if (dataIndex < 0) return;
+    final objectId = attLogDataSource.getObjectId(dataIndex);
     final pos = details.globalPosition;
     showContextMenu(
       context,
       pos,
       onEdit: () {
-        _showEditAttDialog(objectId, ts, rowIndex, empId: empId, name: name);
+        _showEditAttDialog(objectId, ts, dataIndex, empId: empId, name: name);
       },
       onDelete: () {
-        _showDeleteAttConfirm(objectId, empId, name, ts, rowIndex);
+        _showDeleteAttConfirm(objectId, empId, name, ts, dataIndex);
       },
     );
   }

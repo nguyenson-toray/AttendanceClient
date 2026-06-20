@@ -44,12 +44,12 @@ class _TimesheetTabState extends State<TimesheetTab>
   @override
   void initState() {
     super.initState();
-    _minOtCtrl = TextEditingController(text: App.gValue.minOtMinute.toString());
+    _minOtCtrl = TextEditingController(text: App.gValue.timesheetSettings.minOtMinute.toString());
     _otBlockCtrl = TextEditingController(
-      text: App.gValue.otBlockMinute.toString(),
+      text: App.gValue.timesheetSettings.otBlockMinute.toString(),
     );
     _workBlockCtrl = TextEditingController(
-      text: App.gValue.workingBlockMinute.toString(),
+      text: App.gValue.timesheetSettings.workingBlockMinute.toString(),
     );
   }
 
@@ -268,6 +268,35 @@ class _TimesheetTabState extends State<TimesheetTab>
                         ],
 
                         const Divider(),
+                        // ── Shift Info ────────────────────────────────
+                        const Text(
+                          'Shift Parameters',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        if (App.gValue.shiftParams.isEmpty)
+                          const Text(
+                            'No shift records in DB — using defaults',
+                            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                          )
+                        else
+                          ...App.gValue.shiftParams.map((s) => Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Text(
+                                  '${s.name}: ${s.beginHour.toString().padLeft(2, '0')}:${s.beginMin.toString().padLeft(2, '0')}'
+                                  '–${s.endHour.toString().padLeft(2, '0')}:${s.endMin.toString().padLeft(2, '0')}'
+                                  '  rest: ${s.restHour}h'
+                                  '  (${DateFormat('yyyy-MM-dd').format(s.effectiveFrom)}'
+                                  ' → ${DateFormat('yyyy-MM-dd').format(s.effectiveTo)})',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              )),
+
+                        const Divider(),
                         // ── Timesheet Settings ──────────────────────────
                         const Text(
                           'Timesheet Settings',
@@ -285,7 +314,7 @@ class _TimesheetTabState extends State<TimesheetTab>
                           onSubmit: () => _applyInt(
                             _minOtCtrl,
                             30,
-                            (v) => App.gValue.minOtMinute = v,
+                            (v) => App.gValue.timesheetSettings.minOtMinute = v,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -296,7 +325,7 @@ class _TimesheetTabState extends State<TimesheetTab>
                           onSubmit: () => _applyInt(
                             _otBlockCtrl,
                             30,
-                            (v) => App.gValue.otBlockMinute = v,
+                            (v) => App.gValue.timesheetSettings.otBlockMinute = v,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -307,7 +336,7 @@ class _TimesheetTabState extends State<TimesheetTab>
                           onSubmit: () => _applyInt(
                             _workBlockCtrl,
                             1,
-                            (v) => App.gValue.workingBlockMinute = v,
+                            (v) => App.gValue.timesheetSettings.workingBlockMinute = v,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -321,17 +350,17 @@ class _TimesheetTabState extends State<TimesheetTab>
                               ),
                             ),
                             Switch(
-                              value: App.gValue.allowOtInRestTime,
+                              value: App.gValue.timesheetSettings.allowOtInRestTime,
                               activeColor: AppColors.primary,
                               onChanged: (v) => setState(() {
-                                App.gValue.allowOtInRestTime = v;
+                                App.gValue.timesheetSettings.allowOtInRestTime = v;
                               }),
                             ),
                             Text(
-                              App.gValue.allowOtInRestTime ? 'Yes' : 'No',
+                              App.gValue.timesheetSettings.allowOtInRestTime ? 'Yes' : 'No',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: App.gValue.allowOtInRestTime
+                                color: App.gValue.timesheetSettings.allowOtInRestTime
                                     ? AppColors.primary
                                     : AppColors.textTertiary,
                               ),

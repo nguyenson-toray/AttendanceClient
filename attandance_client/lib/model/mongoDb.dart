@@ -5,6 +5,8 @@ import 'package:attandance_client/model/employee.dart';
 import 'package:attandance_client/model/history.dart';
 import 'package:attandance_client/model/otRegister.dart';
 import 'package:attandance_client/model/shiftRegister.dart';
+import 'package:attandance_client/model/shift_param.dart';
+import 'package:attandance_client/model/timesheetSettings.dart';
 import 'package:mongo_dart/mongo_dart.dart';
 import 'package:attandance_client/appLogger.dart';
 import 'package:flutter/foundation.dart';
@@ -19,7 +21,8 @@ class MongoDb {
       colTimesheetsMonthYear,
       colHistory,
       colListPc,
-      colLeaveRegister;
+      colLeaveRegister,
+      colTimesheetSettings;
   String ipServer = 'localhost';
   String? ipServerOverride;
   Db db = Db("mongodb://localhost:27017/tiqn");
@@ -44,6 +47,7 @@ class MongoDb {
       colHistory = db.collection('History');
       colListPc = db.collection('ListPc');
       colLeaveRegister = db.collection('LeaveRegister');
+      colTimesheetSettings = db.collection('TimesheetSettings');
       logger.t('Connected to MongoDB at $ipServer');
     } catch (e) {
       logger.t(e);
@@ -430,6 +434,46 @@ class MongoDb {
         logger.t(e);
       }
     }
+  }
+
+  // ─── Timesheet Settings ───────────────────────────────────────────────────
+
+  Future<TimesheetSettings> getTimesheetSettings() async {
+    try {
+      if (!db.isConnected) {
+        logger.t('getTimesheetSettings - DB not connected, try connect again');
+        await initDB();
+      }
+      final doc = await colTimesheetSettings.findOne();
+      if (doc != null) {
+        logger.t('getTimesheetSettings: loaded from DB');
+        return TimesheetSettings.fromMap(doc);
+      }
+    } catch (e) {
+      logger.t('getTimesheetSettings: $e');
+    }
+    logger.t('getTimesheetSettings: using defaults');
+    return TimesheetSettings();
+  }
+
+  // ─── Shift Params ─────────────────────────────────────────────────────────
+
+  Future<List<ShiftParam>> getShiftParams() async {
+    try {
+      if (!db.isConnected) {
+        logger.t('getShiftParams - DB not connected, try connect again');
+        await initDB();
+      }
+      final docs = await colShift.find().toList();
+      if (docs.isNotEmpty) {
+        logger.t('getShiftParams: loaded ${docs.length} records from DB');
+        return docs.map<ShiftParam>((d) => ShiftParam.fromMap(d)).toList();
+      }
+    } catch (e) {
+      logger.t('getShiftParams: $e');
+    }
+    logger.t('getShiftParams: no records found');
+    return [];
   }
 
   // ─── History ──────────────────────────────────────────────────────────────

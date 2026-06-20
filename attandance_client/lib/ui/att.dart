@@ -67,6 +67,10 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
         return;
       }
 
+      // 0. Load timesheet settings & shift params from DB
+      App.gValue.timesheetSettings = await App.mongoDb.getTimesheetSettings();
+      App.gValue.shiftParams = await App.mongoDb.getShiftParams();
+
       // 1. Load employees first → show UI immediately
       // ignore: use_build_context_synchronously
       await MyFunctions.loadData('employee', context);
