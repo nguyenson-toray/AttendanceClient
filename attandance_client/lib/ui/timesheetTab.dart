@@ -740,7 +740,7 @@ class _SummaryRow {
 class TimesheetDataSource extends DataGridSource {
   TimesheetDataSource(List<TimeSheetDate> data) {
     final dateFmt = DateFormat('yyyy-MM-dd');
-    final timeFmt = DateFormat('HH:mm');
+    final timeFmt = DateFormat('HH:mm:ss');
     _rows = data.map<DataGridRow>((ts) {
       return DataGridRow(
         cells: [

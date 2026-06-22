@@ -1766,7 +1766,7 @@ class AttLogDataSource extends DataGridSource {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Text(
             cell.value is DateTime
-                ? DateFormat('yyyy-MM-dd HH:mm').format(cell.value as DateTime)
+                ? DateFormat('yyyy-MM-dd HH:mm:ss').format(cell.value as DateTime)
                 : cell.value.toString(),
           ),
         );

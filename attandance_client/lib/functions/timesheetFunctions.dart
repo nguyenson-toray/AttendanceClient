@@ -49,13 +49,21 @@ class TimesheetFunctions {
   /// Find shift param from DB by exact name + date.
   /// Falls back to hardcoded defaults if no matching DB record.
   static _ShiftParam _getShiftParam(String shiftName, DateTime date) {
-    final match = App.gValue.shiftParams.where((s) =>
-        s.name == shiftName &&
-        !date.isBefore(s.effectiveFrom) &&
-        !date.isAfter(s.effectiveTo));
+    final match = App.gValue.shiftParams.where(
+      (s) =>
+          s.name == shiftName &&
+          !date.isBefore(s.effectiveFrom) &&
+          !date.isAfter(s.effectiveTo),
+    );
     if (match.isNotEmpty) {
       final s = match.first;
-      return _ShiftParam(s.beginHour, s.beginMin, s.endHour, s.endMin, s.restHour);
+      return _ShiftParam(
+        s.beginHour,
+        s.beginMin,
+        s.endHour,
+        s.endMin,
+        s.restHour,
+      );
     }
     return _defaultShiftParams[shiftName] ?? _defaultShiftParams['Day']!;
   }
@@ -64,10 +72,12 @@ class TimesheetFunctions {
   /// by searching DB for any entry whose name contains [keyword] and covers [date].
   /// Returns the matching shift name, or [keyword] as fallback.
   static String _resolveGroupShift(String keyword, DateTime date) {
-    final match = App.gValue.shiftParams.where((s) =>
-        s.name.contains(keyword) &&
-        !date.isBefore(s.effectiveFrom) &&
-        !date.isAfter(s.effectiveTo));
+    final match = App.gValue.shiftParams.where(
+      (s) =>
+          s.name.contains(keyword) &&
+          !date.isBefore(s.effectiveFrom) &&
+          !date.isAfter(s.effectiveTo),
+    );
     return match.isNotEmpty ? match.first.name : keyword;
   }
 
@@ -214,7 +224,8 @@ class TimesheetFunctions {
 
         // ── Determine shift ─────────────────────────────────────────────────
         String shift = 'Day';
-        if ((emp.group ?? '') == 'Canteen') shift = _resolveGroupShift('Canteen', date);
+        if ((emp.group ?? '') == 'Canteen')
+          shift = _resolveGroupShift('Canteen', date);
         if (shift1Ids.contains(emp.empId)) shift = 'Shift 1';
         if (shift2Ids.contains(emp.empId)) shift = 'Shift 2';
         if (date.weekday == DateTime.sunday)
@@ -271,19 +282,6 @@ class TimesheetFunctions {
         // If maternityLeaveBegin is not set, the employee is still working while
         // pregnant → use maternityEnd as the upper bound.
         final pregnantUpperBound = mLeaveBegin ?? mEnd;
-        if (mBegin != null &&
-            pregnantUpperBound != null &&
-            !date.isBefore(mBegin) &&
-            date.isBefore(pregnantUpperBound)) {
-          isYoungChild = true;
-          noteCheckin = 'Chế độ mang thai';
-        } else if (mLeaveEnd != null &&
-            mEnd != null &&
-            !date.isBefore(mLeaveEnd) &&
-            !date.isAfter(mEnd)) {
-          isYoungChild = true;
-          noteCheckin = 'Chế độ con nhỏ';
-        }
 
         if (isYoungChild) {
           shiftEnd = shiftEnd.subtract(const Duration(hours: 1));
@@ -470,7 +468,19 @@ class TimesheetFunctions {
             }
           }
         }
-
+        if (mBegin != null &&
+            pregnantUpperBound != null &&
+            !date.isBefore(mBegin) &&
+            date.isBefore(pregnantUpperBound)) {
+          isYoungChild = true;
+          noteCheckin = _note(noteCheckin, 'Chế độ mang thai');
+        } else if (mLeaveEnd != null &&
+            mEnd != null &&
+            !date.isBefore(mLeaveEnd) &&
+            !date.isAfter(mEnd)) {
+          isYoungChild = true;
+          noteCheckin = _note(noteCheckin, 'Chế độ con nhỏ');
+        }
         // ── Sunday: all worked hours become OT ────────────────────────────
         if (date.weekday == DateTime.sunday) {
           if (otApproved > 0) {
@@ -748,14 +758,23 @@ class TimesheetFunctions {
       };
 
       DateCellValue? _empJoiningDate(Employee? emp) {
-        if (emp?.joiningDate == null || emp!.joiningDate!.year <= 1900) return null;
-        return DateCellValue(year: emp.joiningDate!.year, month: emp.joiningDate!.month, day: emp.joiningDate!.day);
+        if (emp?.joiningDate == null || emp!.joiningDate!.year <= 1900)
+          return null;
+        return DateCellValue(
+          year: emp.joiningDate!.year,
+          month: emp.joiningDate!.month,
+          day: emp.joiningDate!.day,
+        );
       }
 
       DateCellValue? _empResignDate(Employee? emp) {
         if (emp?.resignOn == null || emp!.resignOn!.year >= 2099) return null;
         if (!(emp.workStatus ?? '').contains('Resigned')) return null;
-        return DateCellValue(year: emp.resignOn!.year, month: emp.resignOn!.month, day: emp.resignOn!.day);
+        return DateCellValue(
+          year: emp.resignOn!.year,
+          month: emp.resignOn!.month,
+          day: emp.resignOn!.day,
+        );
       }
 
       // ── Sheet 1: Detail ─────────────────────────────────────────────────────
@@ -790,7 +809,11 @@ class TimesheetFunctions {
         final emp = empLookup[ts.empId];
         detail.appendRow([
           IntCellValue(detailNo++),
-          DateCellValue(year: ts.date.year, month: ts.date.month, day: ts.date.day),
+          DateCellValue(
+            year: ts.date.year,
+            month: ts.date.month,
+            day: ts.date.day,
+          ),
           TextCellValue(ts.empId),
           IntCellValue(ts.attFingerId),
           TextCellValue(ts.name),
@@ -799,10 +822,18 @@ class TimesheetFunctions {
           TextCellValue(ts.group),
           TextCellValue(ts.shift),
           ts.firstIn != null
-              ? TimeCellValue(hour: ts.firstIn!.hour, minute: ts.firstIn!.minute)
+              ? TimeCellValue(
+                  hour: ts.firstIn!.hour,
+                  minute: ts.firstIn!.minute,
+                  second: ts.firstIn!.second,
+                )
               : TextCellValue(''),
           ts.lastOut != null
-              ? TimeCellValue(hour: ts.lastOut!.hour, minute: ts.lastOut!.minute)
+              ? TimeCellValue(
+                  hour: ts.lastOut!.hour,
+                  minute: ts.lastOut!.minute,
+                  second: ts.lastOut!.second,
+                )
               : TextCellValue(''),
           _d(ts.normalHours),
           _d(ts.normalHours / 8),
