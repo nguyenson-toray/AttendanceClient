@@ -40,6 +40,7 @@ class _TimesheetTabState extends State<TimesheetTab>
   late TextEditingController _minOtCtrl;
   late TextEditingController _otBlockCtrl;
   late TextEditingController _workBlockCtrl;
+  late TextEditingController _excludeEmpCtrl;
 
   @override
   void initState() {
@@ -51,6 +52,9 @@ class _TimesheetTabState extends State<TimesheetTab>
     _workBlockCtrl = TextEditingController(
       text: App.gValue.timesheetSettings.workingBlockMinute.toString(),
     );
+    _excludeEmpCtrl = TextEditingController(
+      text: App.gValue.timesheetSettings.excludeEmpIds.join(', '),
+    );
   }
 
   @override
@@ -58,6 +62,7 @@ class _TimesheetTabState extends State<TimesheetTab>
     _minOtCtrl.dispose();
     _otBlockCtrl.dispose();
     _workBlockCtrl.dispose();
+    _excludeEmpCtrl.dispose();
     super.dispose();
   }
 
@@ -366,6 +371,33 @@ class _TimesheetTabState extends State<TimesheetTab>
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Exclude Employee IDs',
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        TextField(
+                          controller: _excludeEmpCtrl,
+                          style: const TextStyle(fontSize: 12),
+                          decoration: InputDecoration(
+                            hintText: 'TIQN-0001, TIQN-0002, ...',
+                            hintStyle: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          onSubmitted: (v) {
+                            final ids = v
+                                .split(',')
+                                .map((e) => e.trim())
+                                .where((e) => e.isNotEmpty)
+                                .toList();
+                            setState(() {
+                              App.gValue.timesheetSettings.excludeEmpIds = ids;
+                            });
+                          },
                         ),
                       ],
                     ),

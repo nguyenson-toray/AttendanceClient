@@ -56,15 +56,15 @@ class MongoDb {
 
   Future<String> checkPermission(String pcName) async {
     if (kDebugMode) return 'edit';
-    late var allowEdit, allowRead;
+    var allowEdit = [], allowRead = [];
 
     try {
       if (!db.isConnected) {
         logger.t('DB not connected, try connect again');
         await initDB();
       }
-      await colListPc.find().forEach((item) => {allowEdit = item['allowEdit']});
-      await colListPc.find().forEach((item) => {allowRead = item['allowRead']});
+      await colListPc.find().forEach((item) => {allowEdit = item['allowEdit'] ?? []});
+      await colListPc.find().forEach((item) => {allowRead = item['allowRead'] ?? []});
     } catch (e) {
       logger.t(e);
     }

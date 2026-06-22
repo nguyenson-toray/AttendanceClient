@@ -136,6 +136,11 @@ class TimesheetFunctions {
           (e.workStatus ?? '').contains('Resigned') &&
           (e.resignOn == null || e.resignOn!.year >= 2099),
     );
+    // remove excluded employee IDs from settings
+    final excludeIds = App.gValue.timesheetSettings.excludeEmpIds;
+    if (excludeIds.isNotEmpty) {
+      employees.removeWhere((e) => excludeIds.contains(e.empId));
+    }
 
     // ShiftRegisters → Map<dayKey, Map<shiftName, Set<empId>>>
     final shiftIndex = <String, Map<String, Set<String>>>{};

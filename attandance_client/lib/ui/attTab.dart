@@ -69,8 +69,8 @@ class _AttTabState extends State<AttTab> {
   final DateRangePickerController _pickerController =
       DateRangePickerController();
 
-  Future<DateTime?> showDateTimePicker(BuildContext ctx) async {
-    DateTime temp = _selectedDateTime;
+  Future<DateTime?> showDateTimePicker(BuildContext ctx, {DateTime? initial}) async {
+    DateTime temp = initial ?? _selectedDateTime;
     return showDialog<DateTime>(
       context: ctx,
       builder: (ctx) => StatefulBuilder(
@@ -172,7 +172,8 @@ class _AttTabState extends State<AttTab> {
   Future<void> _showAddAttDialog(BuildContext ctx) async {
     _selectedEmpIds.clear();
     _selectedDates = [];
-    _selectedDateTime = DateTime.now();
+    final now = DateTime.now();
+    _selectedDateTime = DateTime(now.year, now.month, now.day, 8, 0);
     await showDialog(
       context: ctx,
       builder: (ctx) => StatefulBuilder(
@@ -434,7 +435,7 @@ class _AttTabState extends State<AttTab> {
                 const SizedBox(height: 6),
                 InkWell(
                   onTap: () async {
-                    final picked = await showDateTimePicker(ctx);
+                    final picked = await showDateTimePicker(ctx, initial: editTs);
                     if (picked != null) setLocal(() => editTs = picked);
                   },
                   borderRadius: BorderRadius.circular(8),

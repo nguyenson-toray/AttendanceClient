@@ -42,9 +42,11 @@ class OvertimeTabState extends State<OvertimeTab> {
 
   void _handleOtCellAction(DataGridCellTapDetails details) {
     if (App.gValue.permission != 'edit') return;
-    final rowIndex = details.rowColumnIndex.rowIndex - 1;
-    if (rowIndex < 0 || rowIndex >= _otDataSource.rows.length) return;
-    final cells = _otDataSource.rows[rowIndex].getCells();
+    final visualIndex = details.rowColumnIndex.rowIndex - 1;
+    final effectiveRows = _otDataSource.effectiveRows;
+    if (visualIndex < 0 || visualIndex >= effectiveRows.length) return;
+    final row = effectiveRows[visualIndex];
+    final cells = row.getCells();
     final empId =
         cells.firstWhere((c) => c.columnName == 'empId').value as String;
     final name =
@@ -55,7 +57,9 @@ class OvertimeTabState extends State<OvertimeTab> {
         cells.firstWhere((c) => c.columnName == 'otTimeBegin').value as String;
     final end =
         cells.firstWhere((c) => c.columnName == 'otTimeEnd').value as String;
-    final recordId = _otDataSource.getId(rowIndex);
+    final dataIndex = _otDataSource.rows.indexOf(row);
+    if (dataIndex < 0) return;
+    final recordId = _otDataSource.getId(dataIndex);
     final otDate = DateTime.tryParse(otDateStr) ?? DateTime.now();
     final pos = details.globalPosition;
     showContextMenu(
@@ -67,7 +71,7 @@ class OvertimeTabState extends State<OvertimeTab> {
           otDate,
           begin,
           end,
-          rowIndex,
+          dataIndex,
           empId: empId,
           name: name,
         );
@@ -78,7 +82,7 @@ class OvertimeTabState extends State<OvertimeTab> {
           empId,
           name,
           otDateStr,
-          rowIndex,
+          dataIndex,
           begin: begin,
           end: end,
         );

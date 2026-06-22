@@ -39,9 +39,11 @@ class ShiftTabState extends State<ShiftTab> {
 
   void _handleShiftCellAction(DataGridCellTapDetails details) {
     if (App.gValue.permission != 'edit') return;
-    final rowIndex = details.rowColumnIndex.rowIndex - 1;
-    if (rowIndex < 0 || rowIndex >= _shiftDataSource.rows.length) return;
-    final cells = _shiftDataSource.rows[rowIndex].getCells();
+    final visualIndex = details.rowColumnIndex.rowIndex - 1;
+    final effectiveRows = _shiftDataSource.effectiveRows;
+    if (visualIndex < 0 || visualIndex >= effectiveRows.length) return;
+    final row = effectiveRows[visualIndex];
+    final cells = row.getCells();
     final empId =
         cells.firstWhere((c) => c.columnName == 'empId').value as String;
     final name =
@@ -52,7 +54,9 @@ class ShiftTabState extends State<ShiftTab> {
         cells.firstWhere((c) => c.columnName == 'toDate').value as String;
     final shift =
         cells.firstWhere((c) => c.columnName == 'shift').value as String;
-    final objectId = _shiftDataSource.getObjectId(rowIndex);
+    final dataIndex = _shiftDataSource.rows.indexOf(row);
+    if (dataIndex < 0) return;
+    final objectId = _shiftDataSource.getObjectId(dataIndex);
     final fromDate = DateTime.tryParse(fromDateStr) ?? DateTime.now();
     final toDate = DateTime.tryParse(toDateStr) ?? DateTime.now();
     final pos = details.globalPosition;
@@ -65,7 +69,7 @@ class ShiftTabState extends State<ShiftTab> {
           fromDate,
           toDate,
           shift,
-          rowIndex,
+          dataIndex,
           empId: empId,
           name: name,
         );
@@ -78,7 +82,7 @@ class ShiftTabState extends State<ShiftTab> {
           fromDateStr,
           toDateStr,
           shift,
-          rowIndex,
+          dataIndex,
         );
       },
     );
