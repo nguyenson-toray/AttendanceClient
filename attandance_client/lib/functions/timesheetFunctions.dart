@@ -46,7 +46,7 @@ class TimesheetFunctions {
     'Canteen': _ShiftParam(7, 0, 16, 0, 1),
   };
 
-  /// Find shift param from DB for a given shift name and date.
+  /// Find shift param from DB by exact name + date.
   /// Falls back to hardcoded defaults if no matching DB record.
   static _ShiftParam _getShiftParam(String shiftName, DateTime date) {
     final match = App.gValue.shiftParams.where((s) =>
@@ -58,6 +58,17 @@ class TimesheetFunctions {
       return _ShiftParam(s.beginHour, s.beginMin, s.endHour, s.endMin, s.restHour);
     }
     return _defaultShiftParams[shiftName] ?? _defaultShiftParams['Day']!;
+  }
+
+  /// For group-based shifts (e.g. Canteen), find the effective shift name
+  /// by searching DB for any entry whose name contains [keyword] and covers [date].
+  /// Returns the matching shift name, or [keyword] as fallback.
+  static String _resolveGroupShift(String keyword, DateTime date) {
+    final match = App.gValue.shiftParams.where((s) =>
+        s.name.contains(keyword) &&
+        !date.isBefore(s.effectiveFrom) &&
+        !date.isAfter(s.effectiveTo));
+    return match.isNotEmpty ? match.first.name : keyword;
   }
 
   /// Floor OT hours to nearest block.
@@ -203,7 +214,7 @@ class TimesheetFunctions {
 
         // ── Determine shift ─────────────────────────────────────────────────
         String shift = 'Day';
-        if ((emp.group ?? '') == 'Canteen') shift = 'Canteen';
+        if ((emp.group ?? '') == 'Canteen') shift = _resolveGroupShift('Canteen', date);
         if (shift1Ids.contains(emp.empId)) shift = 'Shift 1';
         if (shift2Ids.contains(emp.empId)) shift = 'Shift 2';
         if (date.weekday == DateTime.sunday)
@@ -730,53 +741,68 @@ class TimesheetFunctions {
         }
       }
 
+      // Build employee lookup (used by both Detail and Summary sheets)
+      final empLookup = <String, Employee>{
+        for (final e in employees)
+          if (e.empId != null) e.empId!: e,
+      };
+
+      DateCellValue? _empJoiningDate(Employee? emp) {
+        if (emp?.joiningDate == null || emp!.joiningDate!.year <= 1900) return null;
+        return DateCellValue(year: emp.joiningDate!.year, month: emp.joiningDate!.month, day: emp.joiningDate!.day);
+      }
+
+      DateCellValue? _empResignDate(Employee? emp) {
+        if (emp?.resignOn == null || emp!.resignOn!.year >= 2099) return null;
+        if (!(emp.workStatus ?? '').contains('Resigned')) return null;
+        return DateCellValue(year: emp.resignOn!.year, month: emp.resignOn!.month, day: emp.resignOn!.day);
+      }
+
       // ── Sheet 1: Detail ─────────────────────────────────────────────────────
       final detail = excel['Detail'];
       detail.appendRow(
         [
+          'No',
           'Date',
-          'Emp ID',
-          'Name',
+          'Employee ID',
+          'Finger ID',
+          'Full name',
           'Department',
           'Section',
           'Group',
           'Shift',
           'First In',
           'Last Out',
-          'Normal Hrs',
-          'Working Day',
-          'OT Actual',
-          'OT Approved',
+          'Working (hour)',
+          'Working (day)',
+          'OT Actual (hours)',
+          'OT Approved (hours)',
           'OT Final',
           'Note Checkin',
           'Note Sunday',
+          'Joining Date',
+          'Resign Date',
         ].map((h) => TextCellValue(h)).toList(),
       );
 
+      int detailNo = 1;
       for (final ts in data) {
+        final emp = empLookup[ts.empId];
         detail.appendRow([
-          DateCellValue(
-            year: ts.date.year,
-            month: ts.date.month,
-            day: ts.date.day,
-          ),
+          IntCellValue(detailNo++),
+          DateCellValue(year: ts.date.year, month: ts.date.month, day: ts.date.day),
           TextCellValue(ts.empId),
+          IntCellValue(ts.attFingerId),
           TextCellValue(ts.name),
           TextCellValue(ts.department),
           TextCellValue(ts.section),
           TextCellValue(ts.group),
           TextCellValue(ts.shift),
           ts.firstIn != null
-              ? TimeCellValue(
-                  hour: ts.firstIn!.hour,
-                  minute: ts.firstIn!.minute,
-                )
+              ? TimeCellValue(hour: ts.firstIn!.hour, minute: ts.firstIn!.minute)
               : TextCellValue(''),
           ts.lastOut != null
-              ? TimeCellValue(
-                  hour: ts.lastOut!.hour,
-                  minute: ts.lastOut!.minute,
-                )
+              ? TimeCellValue(hour: ts.lastOut!.hour, minute: ts.lastOut!.minute)
               : TextCellValue(''),
           _d(ts.normalHours),
           _d(ts.normalHours / 8),
@@ -785,6 +811,8 @@ class TimesheetFunctions {
           _d(ts.otHoursFinal),
           TextCellValue(ts.attNote2),
           TextCellValue(ts.attNote3),
+          _empJoiningDate(emp) ?? TextCellValue(''),
+          _empResignDate(emp) ?? TextCellValue(''),
         ]);
       }
 
@@ -811,26 +839,20 @@ class TimesheetFunctions {
         s.totalOtFinal += ts.otHoursFinal;
       }
 
-      // Build employee lookup for joining/resign dates
-      final empLookup = <String, Employee>{
-        for (final e in employees)
-          if (e.empId != null) e.empId!: e,
-      };
-
       final summary = excel['Summary'];
       summary.appendRow(
         [
           'No',
           'Employee ID',
-          'Full Name',
+          'Full name',
           'Department',
           'Section',
           'Group',
-          'Total Working (hrs)',
+          'Total Working (hours)',
           'Total Working (days)',
-          'Total OT Actual (hrs)',
-          'Total OT Approved (hrs)',
-          'Total OT Final (hrs)',
+          'Total OT Actual (hours)',
+          'Total OT Aproved (hours)',
+          'Total OT Final (hours)',
           'Joining Date',
           'Resign Date',
         ].map((h) => TextCellValue(h)).toList(),
@@ -840,17 +862,6 @@ class TimesheetFunctions {
       for (final empId in empOrder) {
         final s = totals[empId]!;
         final emp = empLookup[empId];
-        final joiningDate =
-            emp?.joiningDate != null && emp!.joiningDate!.year > 1900
-            ? emp.joiningDate!
-            : null;
-        final resignDate =
-            emp?.resignOn != null &&
-                emp!.resignOn!.year < 2099 &&
-                (emp.workStatus ?? '').contains('Resigned')
-            ? emp.resignOn!
-            : null;
-
         summary.appendRow([
           IntCellValue(no++),
           TextCellValue(s.empId),
@@ -863,20 +874,8 @@ class TimesheetFunctions {
           _d(s.totalOtActual),
           _d(s.totalOtApproved),
           _d(s.totalOtFinal),
-          joiningDate != null
-              ? DateCellValue(
-                  year: joiningDate.year,
-                  month: joiningDate.month,
-                  day: joiningDate.day,
-                )
-              : TextCellValue(''),
-          resignDate != null
-              ? DateCellValue(
-                  year: resignDate.year,
-                  month: resignDate.month,
-                  day: resignDate.day,
-                )
-              : TextCellValue(''),
+          _empJoiningDate(emp) ?? TextCellValue(''),
+          _empResignDate(emp) ?? TextCellValue(''),
         ]);
       }
 
