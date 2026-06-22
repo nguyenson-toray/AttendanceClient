@@ -54,17 +54,26 @@ class MongoDb {
     }
   }
 
+  static List<dynamic> _toList(dynamic value) {
+    if (value is List) return value;
+    if (value is String) return value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return [];
+  }
+
   Future<String> checkPermission(String pcName) async {
     if (kDebugMode) return 'edit';
-    var allowEdit = [], allowRead = [];
+    var allowEdit = <dynamic>[], allowRead = <dynamic>[];
 
     try {
       if (!db.isConnected) {
         logger.t('DB not connected, try connect again');
         await initDB();
       }
-      await colListPc.find().forEach((item) => {allowEdit = item['allowEdit'] ?? []});
-      await colListPc.find().forEach((item) => {allowRead = item['allowRead'] ?? []});
+      final doc = await colListPc.findOne();
+      if (doc != null) {
+        allowEdit = _toList(doc['allowEdit']);
+        allowRead = _toList(doc['allowRead']);
+      }
     } catch (e) {
       logger.t(e);
     }

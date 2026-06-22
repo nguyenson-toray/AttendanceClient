@@ -69,7 +69,10 @@ class _AttTabState extends State<AttTab> {
   final DateRangePickerController _pickerController =
       DateRangePickerController();
 
-  Future<DateTime?> showDateTimePicker(BuildContext ctx, {DateTime? initial}) async {
+  Future<DateTime?> showDateTimePicker(
+    BuildContext ctx, {
+    DateTime? initial,
+  }) async {
     DateTime temp = initial ?? _selectedDateTime;
     return showDialog<DateTime>(
       context: ctx,
@@ -435,7 +438,10 @@ class _AttTabState extends State<AttTab> {
                 const SizedBox(height: 6),
                 InkWell(
                   onTap: () async {
-                    final picked = await showDateTimePicker(ctx, initial: editTs);
+                    final picked = await showDateTimePicker(
+                      ctx,
+                      initial: editTs,
+                    );
                     if (picked != null) setLocal(() => editTs = picked);
                   },
                   borderRadius: BorderRadius.circular(8),
@@ -1243,7 +1249,7 @@ class _AttTabState extends State<AttTab> {
                           color: AppColors.primary,
                         ),
                         label: const Text(
-                          'Missing Checkin',
+                          'Check Missing Checkin',
                           style: TextStyle(color: AppColors.primary),
                         ),
                       ),
@@ -1321,7 +1327,7 @@ class _AttTabState extends State<AttTab> {
                           color: AppColors.success,
                         ),
                         label: const Text(
-                          'Template',
+                          'Template for Import',
                           style: TextStyle(color: AppColors.success),
                         ),
                       ),
