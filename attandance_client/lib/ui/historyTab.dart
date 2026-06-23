@@ -206,7 +206,7 @@ class HistoryDataSource extends DataGridSource {
         cells: [
           DataGridCell<String>(
             columnName: 'time',
-            value: DateFormat('yyyy-MM-dd HH:mm:ss').format(e.time.toLocal()),
+            value: DateFormat('yyyy-MM-dd HH:mm:ss').format(e.time),
           ),
           DataGridCell<String>(columnName: 'pcName', value: e.pcName),
           DataGridCell<String>(columnName: 'log', value: e.log),

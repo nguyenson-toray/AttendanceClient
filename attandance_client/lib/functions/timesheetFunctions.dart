@@ -272,7 +272,6 @@ class TimesheetFunctions {
         // Prerequisite: maternity date fields must be filled correctly in the DB.
         //   Pregnant regime  : maternityBegin ≤ date < maternityLeaveBegin
         //   Young child regime: maternityLeaveEnd ≤ date ≤ maternityEnd
-        bool isYoungChild = false;
         final mBegin = _matDate(emp.maternityBegin);
         final mLeaveBegin = _matDate(emp.maternityLeaveBegin);
         final mLeaveEnd = _matDate(emp.maternityLeaveEnd);
@@ -283,7 +282,18 @@ class TimesheetFunctions {
         // pregnant → use maternityEnd as the upper bound.
         final pregnantUpperBound = mLeaveBegin ?? mEnd;
 
-        if (isYoungChild) {
+        // Determine regime FIRST so isYoungChild is correct for shiftEnd & afternoon calc
+        final bool isPregnant = mBegin != null &&
+            pregnantUpperBound != null &&
+            !date.isBefore(mBegin) &&
+            date.isBefore(pregnantUpperBound);
+        final bool isYoungChild = !isPregnant &&
+            mLeaveEnd != null &&
+            mEnd != null &&
+            !date.isBefore(mLeaveEnd) &&
+            !date.isAfter(mEnd);
+
+        if (isYoungChild || isPregnant) {
           shiftEnd = shiftEnd.subtract(const Duration(hours: 1));
         }
 
@@ -457,8 +467,9 @@ class TimesheetFunctions {
             bool hasAfter =
                 empIdOT.contains(emp.empId) &&
                 (otByEmp[emp.empId] ?? []).any((r) {
-                  final bh = int.tryParse(r.otTimeBegin.split(':')[0]) ?? 0;
-                  return bh >= shiftEnd.hour;
+                  // OT covers after-shift if its end time is past shift end
+                  final eh = int.tryParse(r.otTimeEnd.split(':')[0]) ?? 0;
+                  return eh > shiftEnd.hour;
                 });
             if (!hasAfter) {
               noteCheckin = _note(
@@ -468,17 +479,9 @@ class TimesheetFunctions {
             }
           }
         }
-        if (mBegin != null &&
-            pregnantUpperBound != null &&
-            !date.isBefore(mBegin) &&
-            date.isBefore(pregnantUpperBound)) {
-          isYoungChild = true;
+        if (isPregnant) {
           noteCheckin = _note(noteCheckin, 'Chế độ mang thai');
-        } else if (mLeaveEnd != null &&
-            mEnd != null &&
-            !date.isBefore(mLeaveEnd) &&
-            !date.isAfter(mEnd)) {
-          isYoungChild = true;
+        } else if (isYoungChild) {
           noteCheckin = _note(noteCheckin, 'Chế độ con nhỏ');
         }
         // ── Sunday: all worked hours become OT ────────────────────────────
