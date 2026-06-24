@@ -24,7 +24,9 @@ class AttTab extends StatefulWidget {
   State<AttTab> createState() => _AttTabState();
 }
 
-class _AttTabState extends State<AttTab> {
+class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   AttLogDataSource attLogDataSource = AttLogDataSource(
     attLogs: App.gValue.attLogs,
   );
@@ -1121,6 +1123,7 @@ class _AttTabState extends State<AttTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Padding(
       padding: const EdgeInsets.all(10),
       child: Row(

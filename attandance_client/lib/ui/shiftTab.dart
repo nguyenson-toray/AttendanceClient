@@ -21,7 +21,10 @@ class ShiftTab extends StatefulWidget {
   State<ShiftTab> createState() => ShiftTabState();
 }
 
-class ShiftTabState extends State<ShiftTab> {
+class ShiftTabState extends State<ShiftTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   ShiftRegisterDataSource _shiftDataSource = ShiftRegisterDataSource(
     shiftRegisters: App.gValue.shiftRegisters,
   );
@@ -942,6 +945,7 @@ class ShiftTabState extends State<ShiftTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Padding(
       padding: const EdgeInsets.all(10),
       child: Row(

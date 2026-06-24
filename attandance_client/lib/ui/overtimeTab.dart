@@ -21,7 +21,10 @@ class OvertimeTab extends StatefulWidget {
   State<OvertimeTab> createState() => OvertimeTabState();
 }
 
-class OvertimeTabState extends State<OvertimeTab> {
+class OvertimeTabState extends State<OvertimeTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   OtRegisterDataSource _otDataSource = OtRegisterDataSource(
     otRegisters: App.gValue.otRegisters,
   );
@@ -1076,6 +1079,7 @@ class OvertimeTabState extends State<OvertimeTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Padding(
       padding: const EdgeInsets.all(10),
       child: Row(

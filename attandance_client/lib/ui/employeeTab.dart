@@ -17,7 +17,10 @@ class EmployeeTab extends StatefulWidget {
   State<EmployeeTab> createState() => _EmployeeTabState();
 }
 
-class _EmployeeTabState extends State<EmployeeTab> {
+class _EmployeeTabState extends State<EmployeeTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   EmployeeDataSource employeeDataSource = EmployeeDataSource(
     employeeData: App.gValue.employees,
   );
@@ -322,6 +325,7 @@ class _EmployeeTabState extends State<EmployeeTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Padding(
       padding: const EdgeInsets.all(10),
       child: Container(

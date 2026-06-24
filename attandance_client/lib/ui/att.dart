@@ -37,7 +37,6 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
       setState(() {
         _selectedIndex = _tabController.index;
       });
-      print("Selected Index: " + _tabController.index.toString());
     });
     Future.delayed(const Duration(milliseconds: 200)).then((_) async {
       if (!mounted) return;
