@@ -1,7 +1,7 @@
 # Timesheet Algorithm — `timesheetFunctions.dart`
 
 > Tài liệu này mô tả toàn bộ thuật toán tính timesheet theo code hiện tại.  
-> Cập nhật: 2026-06-02
+> Cập nhật: 2026-06-24
 
 ---
 
@@ -27,6 +27,7 @@ Hàm chính: `TimesheetFunctions.createTimesheets()`
 |---|---|---|
 | `date` | `DateTime` | Ngày |
 | `empId` | `String` | Mã nhân viên |
+| `attFingerId` | `int` | Finger ID |
 | `name` | `String` | Tên |
 | `department`, `section`, `group` | `String` | Phân bổ tổ chức |
 | `shift` | `String` | Ca làm việc |
@@ -35,60 +36,78 @@ Hàm chính: `TimesheetFunctions.createTimesheets()`
 | `otHours` | `double` | OT thực tế |
 | `otHoursApproved` | `double` | OT được duyệt |
 | `otHoursFinal` | `double` | OT cuối = min(otActual, otApproved) |
-| `attNote1` | `String` | Ghi chú chấm công / sự kiện |
-| `attNote2` | `String` | Trạng thái nhân viên đặc biệt |
-| `attNote3` | `String` | Cảnh báo nhẹ (vào sớm / ra trễ không có OT) |
+| `attNote2` | `String` | Ghi chú chấm công, cảnh báo, chế độ |
+| `attNote3` | `String` | Ghi chú Chủ nhật |
 
 ---
 
-## 2. Hằng số ca làm việc
+## 2. Ca làm việc — Tham số & Nguồn dữ liệu
 
-| Ca | Bắt đầu | Kết thúc | restHour | Nghỉ (restBegin → restEnd) |
-|---|---|---|---|---|
-| `Day` | 08:00 | 17:00 | 1 | 12:00 → 13:00 |
-| `Canteen` | 07:00 | 16:00 | 1 | 11:00 → 12:00 |
-| `Shift 1` | 06:00 | 14:00 | 0 | 10:00 → 10:00 (không nghỉ) |
-| `Shift 2` | 14:00 | 22:00 | 0 | 18:00 → 18:00 (không nghỉ) |
+### 2.1 Load từ DB (`colShift`)
 
-> `restBegin = shiftBegin + 4h` ; `restEnd = restBegin + restHour`
+Shift params được load từ MongoDB collection `colShift`, model `ShiftParam`:
+
+| Field DB | Ý nghĩa |
+|---|---|
+| `shift` | Tên ca (e.g. `'Day'`, `'Canteen'`, `'Canteen_new'`, `'Shift 1'`, `'Shift 2'`) |
+| `begin` | Giờ bắt đầu `'HH:mm'` |
+| `end` | Giờ kết thúc `'HH:mm'` |
+| `restHour` | Số giờ nghỉ trưa (thường 0 hoặc 1) |
+| `effectiveFrom` | Ngày hiệu lực từ (default 2022-01-01) |
+| `effectiveTo` | Ngày hiệu lực đến (default 2099-12-31) |
+
+**Lookup:** `_getShiftParam(shiftName, date)` — tìm record khớp tên ca VÀ `date` trong khoảng `[effectiveFrom, effectiveTo]`. Nếu không tìm thấy, dùng fallback mặc định bên dưới.
+
+**Fallback mặc định (khi DB không có record):**
+| Ca | Bắt đầu | Kết thúc | restHour |
+|---|---|---|---|
+| `Day` | 08:00 | 17:00 | 1 |
+| `Canteen` | 07:00 | 16:00 | 1 |
+| `Shift 1` | 06:00 | 14:00 | 0 |
+| `Shift 2` | 14:00 | 22:00 | 0 |
+
+### 2.2 Resolve ca theo nhóm — `_resolveGroupShift(keyword, date)`
+
+Dùng cho nhân viên nhóm **Canteen**: tìm record DB có `name.contains(keyword)` và `date` trong khoảng hiệu lực. Trả về tên ca đó (e.g. `'Canteen_new'`). Fallback về `keyword` nếu không tìm thấy.
+
+> Ví dụ: từ 2026-06-22, ca `'Canteen'` đổi tên thành `'Canteen_new'` với khung giờ mới. `_resolveGroupShift('Canteen', date)` tự động trả về `'Canteen_new'` cho ngày đó.
+
+### 2.3 Cửa sổ nghỉ giữa ca (restBegin / restEnd)
+
+```
+Weekdays:  restBegin = shiftBegin + 4h
+           restEnd   = restBegin + restHour
+
+Sunday:    restBegin = 12:00  (cố định, bất kể giờ OT register)
+           restEnd   = 13:00
+```
 
 ---
 
-## 2b. Cài đặt Timesheet (Setting Tab → `GValue`)
+## 2b. Cài đặt Timesheet (`TimesheetSettings`)
 
-Các tham số cấu hình trong tab **Setting**, lưu trên `App.gValue` (in-memory, reset khi khởi động lại app):
+Lưu trong DB (`colTimesheetSettings`), load vào `App.gValue.timesheetSettings`:
 
 | Setting | Field | Default | Mô tả |
 |---|---|---|---|
-| **Min OT Minute** | `minOtMinute` | 30 | Ngưỡng tối thiểu (phút) để tính OT. Nếu OT thực tế < giá trị này → 0 |
-| **OT Block Minute** | `otBlockMinute` | 30 | Block làm tròn OT (phút). OT actual được floor xuống block gần nhất. VD: 45' → 30', 89' → 60' |
-| **Working Block Minute** | `workingBlockMinute` | 1 | Block làm tròn giờ làm bình thường (phút). Mặc định 1 = không làm tròn. VD: nếu set 15 → 47' → 45' |
-| **Allow OT In Rest Time** | `allowOtInRestTime` | false | Cho phép tính OT giờ nghỉ trưa. Khi `false`: bỏ qua OT record bao trùm giờ nghỉ. Khi `true`: tính `restHour` vào otActual/otApproved |
-
-**Sử dụng trong `timesheetFunctions.dart`:**
-
-| Setting | Hàm / vị trí sử dụng |
-|---|---|
-| `minOtMinute` | `_floorToBlock()` — ngưỡng tối thiểu ; Note "OT trước/sau ca" — ngưỡng phát hiện |
-| `otBlockMinute` | `_floorToBlock()` — block làm tròn |
-| `workingBlockMinute` | `_floorWorkingToBlock()` — áp dụng cho `normalHrs = morning + afternoon` |
-| `allowOtInRestTime` | Gate cho việc cộng `restHour` vào otActual/otApproved khi có OT record bao trùm giờ nghỉ |
+| **Min OT Minute** | `minOtMinute` | 30 | Ngưỡng tối thiểu (phút) để tính OT |
+| **OT Block Minute** | `otBlockMinute` | 30 | Block làm tròn OT. VD: 45' → 30', 89' → 60' |
+| **Working Block Minute** | `workingBlockMinute` | 1 | Block làm tròn giờ làm. Mặc định 1 = không làm tròn |
+| **Allow OT In Rest Time** | `allowOtInRestTime` | false | Cho phép tính OT giờ nghỉ trưa |
+| **Exclude Emp IDs** | `excludeEmpIds` | `[]` | Danh sách mã NV bị loại khỏi tính timesheet |
 
 **`_floorToBlock(hours)`:**
 ```
-minOtMin = App.gValue.minOtMinute          ← cấu hình, default 30
-otBlock  = App.gValue.otBlockMinute         ← cấu hình, default 30
 totalMin = floor(hours × 60)
-if totalMin < minOtMin → return 0
-return floor(totalMin / otBlock) × otBlock / 60
+if totalMin < minOtMinute → return 0
+return floor(totalMin / otBlockMinute) × otBlockMinute / 60
 ```
 
 **`_floorWorkingToBlock(hours)`:**
 ```
-workBlock = App.gValue.workingBlockMinute   ← cấu hình, default 1
-if workBlock <= 1 → return hours            ← không làm tròn
+if workingBlockMinute <= 1 → return hours   ← không làm tròn
 totalMin = floor(hours × 60)
-return floor(totalMin / workBlock) × workBlock / 60
+return floor(totalMin / workingBlockMinute) × workingBlockMinute / 60
 ```
 
 ---
@@ -97,56 +116,40 @@ return floor(totalMin / workBlock) × workBlock / 60
 
 ### 3.1 Pre-index dữ liệu (O(1) lookup)
 
-Trước vòng lặp chính, dữ liệu được index thành Map để tránh linear scan lặp lại:
-
 ```
 // AttLogs → Map<dayKey, Map<empId, List<AttLog>>>
-logIndex = {}
-for log in attLogs:
-    dk = dayKey(log.timestamp)      // 'yyyy-MM-dd'
-    logIndex[dk][log.empId].add(log)
+logIndex[dk][empId].add(log)
 
 // ShiftRegisters → Map<dayKey, Map<shiftName, Set<empId>>>
-shiftIndex = {}
-for sr in shiftRegisters:
-    for d in [sr.fromDate .. sr.toDate]:
-        dk = dayKey(d)
-        shiftIndex[dk][sr.shift].add(sr.empId)
+for d in [sr.fromDate .. sr.toDate]:
+    shiftIndex[dk][sr.shift].add(sr.empId)
 
 // OtRegisters → Map<dayKey, Map<empId, List<OtRegister>>>
-otIndex = {}
-for ot in otRegisters:
-    dk = dayKey(ot.otDate)
-    otIndex[dk][ot.empId].add(ot)
+otIndex[dk][empId].add(ot)
 ```
 
-### 3.2 Vòng lặp chính
+### 3.2 Lọc nhân viên trước vòng lặp
+
+```
+// Loại NV đã nghỉ việc mà không có ngày nghỉ hợp lệ
+employees.removeWhere: workStatus.contains('Resigned') AND resignOn == null OR resignOn.year >= 2099
+
+// Loại NV theo danh sách exclude
+employees.removeWhere: empId in excludeEmpIds
+```
+
+### 3.3 Vòng lặp chính
 
 ```
 for date in [fromDate .. toDate]:
-    dk          = dayKey(date)
-    dayLogMap   = logIndex[dk]              // Map<empId, List<AttLog>> — O(1)
-    shift1Ids   = shiftIndex[dk]['Shift 1'] // Set<empId> — O(1)
-    shift2Ids   = shiftIndex[dk]['Shift 2'] // Set<empId> — O(1)
-    otByEmp     = otIndex[dk]               // Map<empId, List<OtRegister>> — O(1)
-    empIdOT     = otByEmp.keys              // Set<empId> — O(1)
+    dayLogMap = logIndex[dayKey]
+    if dayLogMap is empty → skip date (ngày không ai chấm công)
 
     for employee in employees:
-        empLogs = dayLogMap[employee.empId]  // List<AttLog> — O(1)
         bỏ qua nếu date < employee.joiningDate
-        bỏ qua nếu Resigned + không có log ngày đó (vắng mặt)
+        bỏ qua nếu Resigned + không có log + date >= resignOn
         → tính record TimeSheetDate
 ```
-
-### 3.3 Độ phức tạp
-
-| | Trước tối ưu | Sau tối ưu |
-|--|-------|-----|
-| **Time** | O(D × A × E + D × S + D × O) | O(A + S_expand + O + D × E) |
-| **Space** | O(A) mỗi ngày (copy) | O(A + S_expand + O) cho indexes |
-
-> D = số ngày, A = số att logs, E = số nhân viên, S = số shift registers, O = số OT registers  
-> S_expand = tổng số ngày trong tất cả shift registers (thường nhỏ)
 
 ---
 
@@ -154,43 +157,42 @@ for date in [fromDate .. toDate]:
 
 Thứ tự ưu tiên (sau cùng thắng):
 
-1. Mặc định: `Day`
-2. Nếu `employee.group == 'Canteen'` → `Canteen`
-3. Nếu `empId` có trong `shift1Ids` → `Shift 1`
-4. Nếu `empId` có trong `shift2Ids` → `Shift 2`
-5. Nếu là **Chủ nhật** → luôn về `Day`
+1. Mặc định: `'Day'`
+2. Nếu `employee.group == 'Canteen'` → `_resolveGroupShift('Canteen', date)` (có thể ra `'Canteen_new'` v.v.)
+3. Nếu `empId` có trong `shift1Ids` → `'Shift 1'`
+4. Nếu `empId` có trong `shift2Ids` → `'Shift 2'`
+5. Nếu là **Chủ nhật** → luôn về `'Day'` (dùng làm base params)
 
-> Shift 1/2 ghi đè Canteen. Nhân viên nhóm Canteen nhưng được đăng ký Shift 1/2 sẽ được xếp vào ca đó.
+> Shift 1/2 register ghi đè Canteen. Chủ nhật luôn lấy params ca Day làm cơ sở (nhưng giờ thực tế được override bởi OT register nếu có).
 
-**Chủ nhật — override giờ từ OT register:**  
-Nếu nhân viên có OT register vào Chủ nhật, `shiftBegin` / `shiftEnd` được lấy từ `otTimeBegin` / `otTimeEnd` của record đó.
+**Chủ nhật — override giờ từ OT register:**
+
+Nếu nhân viên có OT register vào Chủ nhật, `shiftBegin`/`shiftEnd` được lấy từ `otTimeBegin`/`otTimeEnd` của record có **`id` lớn nhất** (nhất quán với logic dedup OT). Nếu không có OT register → giữ nguyên Day 08:00-17:00.
 
 ---
 
-## 5. Nhân viên nuôi con nhỏ / mang thai
+## 5. Nhân viên mang thai / nuôi con nhỏ
 
-Chế độ được xác định **theo ngày làm việc** (không dùng `workStatus`) để đảm bảo đúng ngay cả khi nhân viên đã nghỉ việc.
+Chế độ được xác định **theo ngày làm việc** (không dùng `workStatus`).
 
-| Giai đoạn | Điều kiện ngày | note2 |
+| Giai đoạn | Điều kiện ngày | Flag |
 |---|---|---|
-| Mang thai (đi làm) | `maternityBegin ≤ date < (maternityLeaveBegin ?? maternityEnd)` | `Chế độ mang thai` |
-| Đang nghỉ thai sản | `maternityLeaveBegin ≤ date < maternityLeaveEnd` | *(không áp dụng — không đi làm)* |
-| Nuôi con nhỏ (đi làm lại) | `maternityLeaveEnd ≤ date ≤ maternityEnd` | `Chế độ con nhỏ` |
+| Mang thai (đi làm) | `maternityBegin ≤ date < (maternityLeaveBegin ?? maternityEnd)` | `isPregnant = true` |
+| Đang nghỉ thai sản | `maternityLeaveBegin ≤ date < maternityLeaveEnd` | *(không đi làm — không tính)* |
+| Nuôi con nhỏ (đi làm lại) | `maternityLeaveEnd ≤ date ≤ maternityEnd` | `isYoungChild = true` |
 
-> Default của các field maternity là `2099-12-31` hoặc null → coi như "chưa set", không áp dụng chế độ.
+> `isYoungChild` chỉ true khi `isPregnant = false`. Hai chế độ loại trừ nhau.
 >
-> **Yêu cầu dữ liệu:**
-> - Chế độ **mang thai**: bắt buộc `maternityBegin` + `maternityEnd`. Nếu chưa nghỉ thai sản (`maternityLeaveBegin` chưa có), dùng `maternityEnd` làm cận trên.
-> - Chế độ **con nhỏ**: bắt buộc `maternityLeaveEnd` + `maternityEnd`.
->
-> Hai chế độ độc lập — không bắt buộc điền đủ 4 field cùng lúc.
+> Default các field maternity là `2099-12-31` hoặc null → coi như "chưa set".  
+> Nếu chỉ có `maternityBegin` + `maternityEnd` (không có `maternityLeaveBegin`) → toàn bộ khoảng [Begin, End) là `isPregnant` (TH sẩy thai: tiếp tục đi làm đến maternityEnd).
 
-| Thay đổi khi `isYoungChild = true` | Giá trị |
+**Thay đổi khi `isPregnant OR isYoungChild`:**
+
+| Thay đổi | Giá trị |
 |---|---|
-| `shiftEnd` | Giảm 1 giờ so với ca gốc |
-| Tính buổi chiều | Dùng công thức `_youngChildAfternoon` (xem mục 6.3) |
-
-> Buổi sáng vẫn tính bình thường. Chỉ buổi chiều áp dụng quy tắc riêng.
+| `shiftEnd` | Giảm 1 giờ so với ca gốc (`reducedShiftEnd`) |
+| Tính buổi chiều | Dùng `_youngChildAfternoon` (xem mục 6.3) |
+| So sánh Vào trễ / Ra sớm / Ra trễ ≥1h | Dùng `shiftEnd` **đã điều chỉnh** |
 
 ---
 
@@ -199,7 +201,7 @@ Chế độ được xác định **theo ngày làm việc** (không dùng `work
 ### 6.1 Cấu trúc thời gian ca
 
 ```
-shiftBegin ──── restBegin ──── restEnd ──── shiftEnd
+shiftBegin ──── restBegin ──── restEnd ──── shiftEnd (reducedShiftEnd nếu có regime)
      |           (begin+4h)    (rest+Nh)       |
      |←─ Buổi sáng ──→|←── Nghỉ ──→|←─ Buổi chiều ──→|
 ```
@@ -207,77 +209,80 @@ shiftBegin ──── restBegin ──── restEnd ──── shiftEnd
 ### 6.2 Điều kiện tính
 
 - Buổi sáng chỉ tính nếu `firstIn <= restBegin`
-- Buổi chiều chỉ tính nếu `lastOut >= restEnd`
+- Buổi chiều (bình thường): chỉ tính nếu `lastOut >= restEnd`
+- Buổi chiều (regime): tính theo `_youngChildAfternoon` — không có điều kiện restEnd
 
 ### 6.3 Công thức
 
 **Buổi sáng:**
 ```
-morning = clamp(min(lastOut, restBegin) − max(firstIn, shiftBegin), 0, ∞)
+start   = max(firstIn, shiftBegin)
+end     = min(lastOut, restBegin)
+morning = clamp(end − start, 0, ∞)
 ```
 
 **Buổi chiều — nhân viên bình thường:**
 ```
-afternoon = clamp(min(lastOut, shiftEnd) − max(firstIn, restEnd), 0, ∞)
+start     = max(firstIn, restEnd)
+end       = min(lastOut, shiftEnd)
+afternoon = clamp(end − start, 0, ∞)
 ```
 
-**Buổi chiều — nuôi con nhỏ / mang thai** (`shiftEnd` đã giảm 1h = `reducedShiftEnd`):
+**Buổi chiều — mang thai / nuôi con nhỏ** (`shiftEnd` đã giảm 1h = `reducedShiftEnd`):
 
-| Điều kiện | Kết quả |
+| Điều kiện `lastOut` | Kết quả `afternoon` |
 |---|---|
-| `lastOut < restEnd` | 0 h |
-| `lastOut >= reducedShiftEnd` | 4 h |
-| `restEnd <= lastOut < reducedShiftEnd` | `4 − (reducedShiftEnd − lastOut)` h, tối thiểu 0 |
+| `lastOut >= reducedShiftEnd` | 4 h (credit đủ buổi chiều gốc) |
+| `lastOut < reducedShiftEnd` | `clamp(4 − earlyBy, 0, 4)` trong đó `earlyBy = reducedShiftEnd − lastOut` |
+
+> Kết hợp với buổi sáng (4h khi vào đúng giờ):  
+> `normalHours = 8 − earlyBy` (về sớm bao nhiêu thì trừ bấy nhiêu, tối thiểu 0)  
+> Nếu về đúng hoặc sau `reducedShiftEnd` → `normalHours = 8h = 1 công`
 
 ```
 normalHours = _floorWorkingToBlock(morning + afternoon)
 ```
 
-> Với `workingBlockMinute = 1` (default): không làm tròn, giữ nguyên giá trị gốc.
-
 ---
 
 ## 7. Tính OT
 
-> OT tính **đồng nhất cho tất cả ca** (Day, Canteen, Shift 1, Shift 2).  
-> OT được **tách riêng trước ca và sau ca**, tính independent, rồi sum lại.
+> OT tính đồng nhất cho tất cả ca. Tách riêng trước ca và sau ca, tính independent, sum lại.
 
 ### 7.1 Base OT (trước khi tra OT register)
 
 ```
 baseOtActual = _floorToBlock(max(lastOut − shiftEnd, 0))
-otApproved = 0
+otApproved   = 0
 ```
 
-**`_floorToBlock(hours)`:** *(xem chi tiết tại mục 2b)*
-
-VD (default 30/30): 45' → 30' (0.5h), 89' → 60' (1.0h), 25' → 0
+> `shiftEnd` là giờ ca đã điều chỉnh (có thể đã giảm 1h cho chế độ thai sản/con nhỏ).
 
 ### 7.2 Có đăng ký OT — tiền xử lý
 
-1. **Deduplicate:** Giữ record có `id` lớn nhất theo `uniqueKeyWithoutId`.
-2. **Tách OT nghỉ trưa:** Nếu có record thỏa `otTimeBegin.hour <= restBegin.hour` AND `otTimeEnd.hour >= restEnd.hour` AND `restHour > 0` → đánh dấu `otRestHour = true`, bỏ record này ra khỏi danh sách.
-3. Xử lý các OT records còn lại qua `_calcOtRecords`.
+1. **Deduplicate:** giữ record có `id` lớn nhất theo `uniqueKeyWithoutId`
+2. **Tách OT nghỉ trưa (chỉ ngày thường):** Nếu `restHour > 0` AND không phải Chủ nhật AND tồn tại record thỏa `otTimeBegin.hour <= restBegin.hour` AND `otTimeEnd.hour >= restEnd.hour` → đánh dấu `otRestHour = true`, loại record đó ra khỏi danh sách
+3. Xử lý OT records còn lại qua `_calcOtRecords`
+
+> **Chủ nhật:** bước lọc OT nghỉ trưa bị bỏ qua hoàn toàn. OT full-day (08:00-17:00) sẽ trùm qua giờ nghỉ trưa và được xử lý trong `_calcOtRecords` với deduction 1h.
 
 ### 7.3 Phân loại OT records — `_calcOtRecords`
 
-Mỗi OT record được phân loại vào 1 trong 3 nhóm:
-
 | Nhóm | Điều kiện | Mô tả |
 |---|---|---|
-| **Trước ca** | `endHour <= shiftBegin.hour` | VD: 06:00–08:00 cho ca Day |
-| **Sau ca** | `beginHour >= shiftEnd.hour` | VD: 17:00–19:00 cho ca Day |
-| **Chủ nhật full-day** | `bh < 12` AND `eh > 13` (chỉ Chủ nhật) | Span qua trưa |
+| **Chủ nhật full-day** | Chủ nhật AND `beginHour < 12` AND `endHour > 13` | Span qua buổi trưa |
+| **Trước ca** | `endHour <= shiftBegin.hour` | VD: 06:00–08:00 cho Day |
+| **Sau ca** | `beginHour >= shiftEnd.hour` | VD: 17:00–19:00 cho Day |
 
 ### 7.4 Tính OT trước ca
 
 ```
-earliestBegin = min(beginOT) của tất cả records trước ca
-latestEnd     = max(endOT) của tất cả records trước ca
-otApproved    = latestEnd − earliestBegin               [giờ]
-earliestStart = shiftBegin − otApproved                 [thời điểm]
+earliestBegin = min(beginOT) của các records trước ca
+latestEnd     = max(endOT) của các records trước ca
+otApproved    = latestEnd − earliestBegin
+earliestStart = shiftBegin − otApproved
 rawActual     = if firstIn < earliestStart → otApproved
-                else → shiftBegin − firstIn             [giờ, ≥ 0]
+                else → max(shiftBegin − firstIn, 0)
 otActual      = _floorToBlock(rawActual)
 otFinal       = clamp(otActual, 0, otApproved)
 ```
@@ -285,30 +290,31 @@ otFinal       = clamp(otActual, 0, otApproved)
 ### 7.5 Tính OT sau ca
 
 ```
-earliestBegin = min(beginOT) của tất cả records sau ca
-latestEnd     = max(endOT) của tất cả records sau ca
-otApproved    = latestEnd − earliestBegin               [giờ]
+earliestBegin = min(beginOT) của các records sau ca
+latestEnd     = max(endOT) của các records sau ca
+otApproved    = latestEnd − earliestBegin
 effectiveEnd  = min(lastOut, latestEnd)
-rawActual     = if lastOut > shiftEnd → effectiveEnd − shiftEnd   [giờ, ≥ 0]
-                else → 0
+rawActual     = if lastOut > shiftEnd → effectiveEnd − shiftEnd   else 0
 otActual      = _floorToBlock(rawActual)
 otFinal       = clamp(otActual, 0, otApproved)
 ```
 
-### 7.6 Chủ nhật full-day
+### 7.6 Chủ nhật full-day (trong `_calcOtRecords`)
 
 ```
-otApproved = (endOT − beginOT) − 1h                    [trừ giờ nghỉ trưa]
-otActual   = shiftBegin − firstIn                       [nếu vào sớm]
+otApproved = (endOT − beginOT) − 1h         [trừ giờ nghỉ trưa cố định]
+otActual   = baseOtActual                     [time after shiftEnd]
 otFinal    = clamp(otActual, 0, otApproved)
 ```
+
+> Kết quả này sau đó bị ghi đè bởi **Sunday block** (mục 8).
 
 ### 7.7 Tổng hợp
 
 ```
-otActual   = otActual_before + otActual_after
-otApproved = otApproved_before + otApproved_after
-otFinal    = otFinal_before + otFinal_after
+totalActual   = otActual_before + otActual_after
+totalApproved = otApproved_before + otApproved_after
+totalFinal    = otFinal_before + otFinal_after
 ```
 
 ### 7.8 OT giờ nghỉ trưa
@@ -317,47 +323,40 @@ otFinal    = otFinal_before + otFinal_after
 if otRestHour AND allowOtInRestTime:
     otActual   += restHour
     otApproved += restHour
-    note1      += 'OT giờ nghỉ trưa'
+    noteCheckin += 'OT giờ nghỉ trưa'
 ```
 
-> Khi `allowOtInRestTime = false` (default): OT record bao trùm giờ nghỉ trưa vẫn bị filter ra khỏi danh sách OT records (tránh double-count), nhưng **không cộng thêm** restHour vào otActual/otApproved.
-
-### 7.9 OT Final (sau tất cả cộng thêm)
+### 7.9 OT Final (sau tất cả)
 
 ```
 otFinal = clamp(otActual, 0, otApproved)
-```
-
-### 7.10 Note OT trước/sau ca (cảnh báo thiếu đăng ký)
-
-Note chỉ xuất hiện khi có OT thực tế nhưng **không có** OT register cho khoảng thời gian đó:
-
-```
-if ngày != Chủ nhật:
-    if firstIn < shiftBegin AND (shiftBegin − firstIn) >= minOtMinute:
-        if không có OT record mà otTimeEnd.hour <= shiftBegin.hour:
-            noteOT += 'OT trước ca'
-    if lastOut > shiftEnd AND (lastOut − shiftEnd) >= minOtMinute:
-        if không có OT record mà otTimeBegin.hour >= shiftEnd.hour:
-            noteOT += 'OT sau ca'
 ```
 
 ---
 
 ## 8. Xử lý ngày Chủ nhật
 
-Áp dụng **sau** khi tính normalHours và OT:
+Áp dụng **sau** khi tính normalHours và OT (ghi đè):
 
 ```
-otActual    = normalHours          ← toàn bộ giờ làm chuyển thành OT
+if otApproved > 0:
+    otApproved = shiftEnd − shiftBegin       [dùng shiftBegin/shiftEnd đã override từ OT register]
+    if shiftBegin.hour < 12 AND shiftEnd.hour > 13:
+        otApproved −= 1                      [trừ giờ nghỉ trưa]
+
+otActual    = normalHours                    [toàn bộ giờ làm chuyển thành OT]
 normalHours = 0
-otApproved  = shiftEnd − shiftBegin   (chỉ nếu có đăng ký OT)
-              − 1h nếu span qua bữa trưa (begin < 12:00 AND end > 13:00)
 otFinal     = clamp(otActual, 0, otApproved)
 
-note1 = 'OT ngày CN'
-        + 'Có phụ cấp cơm trưa'  nếu otActual > 4h AND lastOut > restEnd AND firstIn < restBegin
+if otActual > 0:
+    noteSunday = 'OT ngày CN'
+    if otActual > 4 AND firstIn < restBegin(12:00) AND lastOut > restEnd(13:00):
+        noteSunday += 'Có phụ cấp cơm trưa'
 ```
+
+> `restBegin/restEnd` cho Chủ nhật luôn là 12:00/13:00 (cố định).  
+> `shiftBegin/shiftEnd` là từ OT register (nếu có), không phụ thuộc vào ca gốc.  
+> Nếu nhân viên không có OT register → `otApproved = 0` → `otFinal = 0`.
 
 ---
 
@@ -365,40 +364,32 @@ note1 = 'OT ngày CN'
 
 Nhiều ghi chú trong cùng 1 field ngăn cách bằng ` ; `.
 
-### Note OT Reg (attNote1) — liên quan đăng ký OT
-
-> Note "OT trước/sau ca" chỉ xuất hiện khi **có OT thực tế** nhưng **không có OT register** cho khoảng thời gian đó. Nếu OT đã được đăng ký đầy đủ → không note.
-
-| Điều kiện | Nội dung |
-|---|---|
-| Vào trước ca ≥ `minOtMinute` phút AND không có OT register trước ca | `OT trước ca` |
-| Ra sau ca ≥ `minOtMinute` phút AND không có OT register sau ca | `OT sau ca` |
-| OT bao trùm giờ nghỉ trưa AND `allowOtInRestTime = true` | `OT giờ nghỉ trưa` |
-
-> **Kiểm tra "có OT register trước ca":** có ít nhất 1 OT record mà `otTimeEnd.hour <= shiftBegin.hour`  
-> **Kiểm tra "có OT register sau ca":** có ít nhất 1 OT record mà `otTimeBegin.hour >= shiftEnd.hour`  
-> Không áp dụng cho ngày Chủ nhật.
-
-### Note Checkin (attNote2) — liên quan chấm công & chế độ
+### attNote2 (`noteCheckin`) — tất cả ghi chú liên quan chấm công & chế độ
 
 | Điều kiện | Nội dung |
 |---|---|
 | Chỉ 1 lần chấm công | `Chỉ có 1 lần chấm công` |
-| `lastOut ≤ shiftBegin` | `Không chấm công RA` | 
+| `lastOut ≤ shiftBegin` | `Không chấm công RA` |
 | `firstIn ≥ shiftEnd` | `Không chấm công VÀO` |
+| OT bao trùm giờ nghỉ trưa AND `allowOtInRestTime = true` | `OT giờ nghỉ trưa` |
 | `firstIn > shiftBegin` | `Vào trễ` |
 | `lastOut < shiftEnd` | `Ra sớm` |
+| `shiftBegin − firstIn ≥ 60'` AND không có OT register trước ca | `Vào sớm ≥1h, không có ĐK OT trước ca` |
+| `lastOut − shiftEnd ≥ 60'` AND không có OT register sau ca | `Ra trễ ≥1h, không có ĐK OT sau ca` |
 | Chế độ mang thai (date-based) | `Chế độ mang thai` |
 | Chế độ con nhỏ (date-based) | `Chế độ con nhỏ` |
-| `shiftBegin − firstIn ≥ 60'` AND không có OT register | `Vào sớm ≥1h, Không có đăng ký OT` |
-| `lastOut − shiftEnd ≥ 60'` AND không có OT register | `Ra trễ ≥1h, Không có đăng ký OT` |
 
-### Note Sunday (attNote3) — liên quan đi làm Chủ nhật
+> **Tất cả so sánh sớm/trễ** dùng `shiftEnd` hiện tại (đã điều chỉnh cho chế độ thai sản/con nhỏ).  
+> **Kiểm tra "có OT register trước ca":** `otTimeEnd.hour <= shiftBegin.hour`  
+> **Kiểm tra "có OT register sau ca":** `otTimeEnd.hour > shiftEnd.hour`  
+> Không áp dụng cho Chủ nhật.
+
+### attNote3 (`noteSunday`) — ghi chú Chủ nhật
 
 | Điều kiện | Nội dung |
 |---|---|
-| Chủ nhật có OT | `OT ngày CN` |
-| Chủ nhật + span qua buổi trưa + otActual > 4h | `OT ngày CN ; Có phụ cấp cơm trưa` |
+| Chủ nhật có giờ làm | `OT ngày CN` |
+| + otActual > 4h AND span qua 12:00-13:00 | `OT ngày CN ; Có phụ cấp cơm trưa` |
 
 ---
 
@@ -406,11 +397,10 @@ Nhiều ghi chú trong cùng 1 field ngăn cách bằng ` ; `.
 
 | Loại | Điều kiện |
 |---|---|
-| `[Resigned + Att]` | workStatus chứa `'Resigned'` AND có log chấm công sau `resignOn` |
-| `[Ra 16-17h]` | shift **==** `'Day'` AND workStatus **==** `'Working'` AND `isYoungChild == false` AND không phải Chủ nhật AND `lastOut.hour == 16` |
+| `[Resigned + Att]` | workStatus chứa `'Resigned'` AND có log chấm công vào/sau `resignOn` |
+| `[Ra 16-17h]` | shift `== 'Day'` AND workStatus `== 'Working'` AND `!isYoungChild` AND `!isPregnant` AND không phải Chủ nhật AND `lastOut.hour == 16` |
 
-**Mục đích:** Phát hiện nhân viên ca Day về lúc 16:xx mà không thuộc chế độ mang thai/con nhỏ — khả năng cao là chế độ chưa được cập nhật đủ ngày tháng trong DB (`maternityBegin`/`maternityEnd`).  
-Canteen tự loại trừ vì shift của họ là `'Canteen'` (≠ `'Day'`).
+> **[Ra 16-17h]** phát hiện nhân viên ca Day về lúc 16:xx mà không thuộc chế độ thai sản/con nhỏ — khả năng cao thiếu ngày tháng maternity trong DB. Canteen tự loại vì shift ≠ `'Day'`. Nhân viên đang hưởng chế độ được loại khỏi cảnh báo này.
 
 ---
 
@@ -420,9 +410,9 @@ Canteen tự loại trừ vì shift của họ là `'Canteen'` (≠ `'Day'`).
 workingDay = normalHours / 8
 ```
 
-- Hiển thị trong DataGrid (cột `W.Day`)
-- Cột `Working Day` trong sheet **Detail**
-- Tổng `Working Day` trong sheet **Summary** = `Σ(normalHours / 8)` của nhân viên
+- Nhân viên đủ công (8h) → 1.0 công
+- Nhân viên mang thai/con nhỏ về đúng `reducedShiftEnd` → normalHours = 8h → 1.0 công
+- Tổng Working Day trong Summary = `Σ(normalHours / 8)`
 
 ---
 
@@ -432,7 +422,7 @@ workingDay = normalHours / 8
 |---|---|
 | OT | `_floorToBlock()` — floor xuống `otBlockMinute`, bỏ qua nếu < `minOtMinute` |
 | Giờ làm bình thường | `_floorWorkingToBlock()` — floor xuống `workingBlockMinute` (default 1 = không làm tròn) |
-| Xuất Excel | Làm tròn 2 chữ số thập phân qua `_d(v)` = `DoubleCellValue(double.parse(v.toStringAsFixed(2)))` |
+| Xuất Excel | Làm tròn 2 chữ số thập phân: `_d(v) = DoubleCellValue(v.toStringAsFixed(2))` |
 
 ---
 
@@ -440,66 +430,71 @@ workingDay = normalHours / 8
 
 File: `Timesheets_yyyyMMdd_HHmm.xlsx`
 
-| Sheet | Các cột chính |
+| Sheet | Các cột |
 |---|---|
 | **Important Note** | Type, Detail — danh sách anomalies |
-| **Detail** | Date, Emp ID, Name, Dept, Section, Group, Shift, First In, Last Out, Normal Hrs, **Working Day**, OT Actual, OT Approved, OT Final, **Note OT Reg**, **Note Checkin**, **Note Sunday** |
-| **Summary** | No, Emp ID, Full Name, Dept, Section, Group, Total Working Hrs, **Total Working Day**, Total OT Actual, Total OT Approved, Total OT Final, Joining Date, Resign Date |
+| **Detail** | No, Date, Employee ID, Finger ID, Full name, Dept, Section, Group, Shift, First In (HH:mm:ss), Last Out (HH:mm:ss), Working (hour), Working (day), OT Actual, OT Approved, OT Final, Note Checkin, Note Sunday, Joining Date, Resign Date |
+| **Summary** | No, Employee ID, Full name, Dept, Section, Group, Total Working (hours), Total Working (days), Total OT Actual, Total OT Approved, Total OT Final, Joining Date, Resign Date |
 
 ---
 
 ## 14. Sơ đồ quyết định tổng quát
 
 ```
-── Settings (từ App.gValue) ────────────────────────────────────
-minOtMinute      = 30   ← ngưỡng tối thiểu OT
-otBlockMinute    = 30   ← block làm tròn OT
-workingBlockMin  = 1    ← block làm tròn giờ làm
-allowOtInRest    = false ← cho phép OT giờ nghỉ trưa
+── Settings ────────────────────────────────────────────────────────
+minOtMinute       = 30    ← ngưỡng tối thiểu OT
+otBlockMinute     = 30    ← block làm tròn OT
+workingBlockMin   = 1     ← block làm tròn giờ làm
+allowOtInRest     = false ← cho phép OT giờ nghỉ trưa
+excludeEmpIds     = []    ← NV bị loại khỏi tính
 
-── Pre-index (1 lần, trước vòng lặp) ──────────────────────────
-logIndex   = attLogs  → Map<dayKey, Map<empId, List<AttLog>>>
-shiftIndex = shifts   → Map<dayKey, Map<shiftName, Set<empId>>>
-otIndex    = otRegs   → Map<dayKey, Map<empId, List<OtRegister>>>
+── Shift params (App.gValue.shiftParams từ DB) ───────────────────
+_getShiftParam(name, date)  → match tên + ngày hiệu lực → fallback default
+_resolveGroupShift(keyword, date) → Canteen group → 'Canteen_new' v.v.
 
-── Vòng lặp chính ─────────────────────────────────────────────
+── Pre-index (1 lần) ───────────────────────────────────────────────
+logIndex   → Map<dayKey, Map<empId, List<AttLog>>>
+shiftIndex → Map<dayKey, Map<shiftName, Set<empId>>>
+otIndex    → Map<dayKey, Map<empId, List<OtRegister>>>
+
+── Vòng lặp chính ──────────────────────────────────────────────────
 for (date, employee):
-    empLogs = logIndex[dayKey][empId]    ← O(1) lookup
-    otRecs  = otIndex[dayKey][empId]     ← O(1) lookup
+    Xác định ca: Day → Canteen(resolve) → Shift1/2 → Sunday→Day
+    Nếu Sunday + có OT register:
+        shiftBegin/End từ OT register (record id lớn nhất)
+    restBegin/End: Sunday=12:00/13:00 cố định; weekday=shiftBegin+4h+restHour
 
-    ┌─ 0 logs ────────────────────────────────→ record rỗng (zeros)
-    │
-    ├─ 1 log ────────────────────────────────→ note2 = 'Chỉ có 1 lần chấm công'
-    │
+    isPregnant / isYoungChild → shiftEnd −= 1h
+
+    ┌─ 0 logs ─────────────────────────────────→ record rỗng (zeros)
+    ├─ 1 log ─────────────────────────────────→ 'Chỉ có 1 lần chấm công'
     └─ ≥2 logs:
-        fi, lo = single-pass min/max(timestamps)
-        ┌─ lo ≤ shiftBegin ──────────────────→ note2 = 'Không chấm công RA'
-        ├─ fi ≥ shiftEnd ────────────────────→ note2 = 'Không chấm công VÀO'
+        fi, lo = min/max(timestamps)
+        ┌─ lo ≤ shiftBegin ───────────────────→ 'Không chấm công RA'
+        ├─ fi ≥ shiftEnd ────────────────────→ 'Không chấm công VÀO'
         └─ fi ≠ lo:
-            normalHours = _floorWorkingToBlock(morning + afternoon)
-            workingDay  = normalHours / 8
+            morning   = _normalMorning(fi, lo, shiftBegin, restBegin)
+            afternoon = isPregnant|isYoungChild
+                          ? _youngChildAfternoon(lo, restEnd, shiftEnd)  ← 8−earlyBy
+                          : _normalAfternoon(fi, lo, shiftEnd, restEnd)
+            normalHrs = _floorWorkingToBlock(morning + afternoon)
 
             baseOtActual = _floorToBlock(max(lo − shiftEnd, 0))
             ┌─ has OT register:
-            │   deduplicate → tách otRestHour
-            │   → _calcOtRecords: phân loại trước/sau ca
-            │     mỗi phần: _floorToBlock(rawActual), clamp(0, approved)
-            │     sum lại
-            │   if otRestHour AND allowOtInRest:
-            │       otActual/otApproved += restHour
+            │   dedup (highest id) → filter rest-hour (weekday only)
+            │   _calcOtRecords: trước ca / sau ca / Sunday full-day
+            │   if otRestHour AND allowOtInRest: +restHour
             └─ no OT register: otApproved = 0
 
             otFinal = clamp(otActual, 0, otApproved)
+            ghi chú: Vào trễ / Ra sớm / Vào sớm ≥1h / Ra trễ ≥1h (vs shiftEnd điều chỉnh)
 
-            Note OT trước/sau ca (không áp dụng Chủ nhật):
-                if fi < shiftBegin ≥ minOtMinute AND no before-OT record → 'OT trước ca'
-                if lo > shiftEnd ≥ minOtMinute AND no after-OT record   → 'OT sau ca'
+    Sunday block (ghi đè):
+        otApproved = shiftEnd−shiftBegin [−1h lunch nếu span qua trưa]  (chỉ nếu có OT reg)
+        otActual = normalHrs; normalHrs = 0
+        otFinal  = clamp(otActual, 0, otApproved)
 
-        Sunday override:
-            otActual = normalHours; normalHours = 0
-            otApproved = span ca − lunch (nếu có OT register)
-            otFinal = clamp(otActual, 0, otApproved)
-
-        Anomaly checks → anomalies[]
-        Note 3 checks  → note3
+    Anomaly checks → anomalies[]
+    Regime notes   → 'Chế độ mang thai' / 'Chế độ con nhỏ'
+    Sunday notes   → 'OT ngày CN' [+ 'Có phụ cấp cơm trưa']
 ```

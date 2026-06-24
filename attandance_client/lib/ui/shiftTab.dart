@@ -1434,8 +1434,9 @@ class ShiftTabState extends State<ShiftTab> {
 
 class ShiftRegisterDataSource extends DataGridSource {
   ShiftRegisterDataSource({required List<ShiftRegister> shiftRegisters}) {
-    _objectIds = shiftRegisters.map((e) => e.objectId).toList();
-    _rows = shiftRegisters.reversed.map<DataGridRow>((e) {
+    final reversed = shiftRegisters.reversed.toList();
+    _objectIds = reversed.map((e) => e.objectId).toList();
+    _rows = reversed.map<DataGridRow>((e) {
       return DataGridRow(
         cells: [
           DataGridCell<String>(

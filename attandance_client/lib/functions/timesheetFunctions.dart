@@ -248,18 +248,25 @@ class TimesheetFunctions {
         );
 
         // Sunday → override shift window from OT register if employee has one
+        // Use same record selection as OT dedup: highest id wins
         if (date.weekday == DateTime.sunday) {
           final sunOt = otByEmp[emp.empId] ?? [];
           if (sunOt.isNotEmpty) {
+            final sunRec = sunOt.reduce((a, b) => a.id >= b.id ? a : b);
             shiftBegin =
-                _parseShiftTime(date, sunOt.last.otTimeBegin) ?? shiftBegin;
-            shiftEnd = _parseShiftTime(date, sunOt.last.otTimeEnd) ?? shiftEnd;
+                _parseShiftTime(date, sunRec.otTimeBegin) ?? shiftBegin;
+            shiftEnd = _parseShiftTime(date, sunRec.otTimeEnd) ?? shiftEnd;
           }
         }
 
-        // Rest window: fixed 4 h after shift start
-        final restBegin = shiftBegin.add(const Duration(hours: 4));
-        final restEnd = restBegin.add(Duration(hours: p.restHour));
+        // Rest window: always 12:00-13:00 on Sunday (regardless of OT register time);
+        // on weekdays: 4h after shift start with shift's restHour.
+        final restBegin = date.weekday == DateTime.sunday
+            ? DateTime.utc(date.year, date.month, date.day, 12, 0)
+            : shiftBegin.add(const Duration(hours: 4));
+        final restEnd = date.weekday == DateTime.sunday
+            ? DateTime.utc(date.year, date.month, date.day, 13, 0)
+            : restBegin.add(Duration(hours: p.restHour));
 
         // ── Per-employee variables ──────────────────────────────────────────
         double normalHrs = 0, otActual = 0, otApproved = 0, otFinal = 0;
@@ -323,9 +330,10 @@ class TimesheetFunctions {
             if (!fi.isAfter(restBegin)) {
               morning = _normalMorning(fi, lo, shiftBegin, restBegin);
             }
-            if (isYoungChild) {
+            if (isYoungChild || isPregnant) {
               // shiftEnd already reduced by 1h (= reducedShiftEnd)
               // Credit: 4h if arrived at reducedShiftEnd; else 4 - earlyBy
+              // Both regimes: leave 1h early but get full day credit
               afternoon = _youngChildAfternoon(lo, restEnd, shiftEnd);
             } else {
               if (!lo.isBefore(restEnd)) {
@@ -362,7 +370,8 @@ class TimesheetFunctions {
               }
 
               // Check OT record that covers rest hour — filter it out
-              if (p.restHour > 0) {
+              // Skip on Sunday: full-day OT (e.g. 08:00-17:00) spans lunch but is valid; _calcOtRecords deducts 1h internally
+              if (p.restHour > 0 && date.weekday != DateTime.sunday) {
                 int restIdx = -1;
                 for (int i = 0; i < otRecs.length; i++) {
                   final ob =
@@ -438,6 +447,7 @@ class TimesheetFunctions {
           if (shift == 'Day' &&
               (emp.workStatus ?? '') == 'Working' &&
               !isYoungChild &&
+              !isPregnant &&
               date.weekday != DateTime.sunday &&
               lastOut.hour == 16) {
             anomalies.add(
@@ -463,11 +473,11 @@ class TimesheetFunctions {
           }
 
           // 4. Left ≥1h late but no OT register covering after-shift
+          // shiftEnd already accounts for regime (pregnant/youngChild = reduced by 1h)
           if (lastOut.difference(shiftEnd).inMinutes >= 60) {
             bool hasAfter =
                 empIdOT.contains(emp.empId) &&
                 (otByEmp[emp.empId] ?? []).any((r) {
-                  // OT covers after-shift if its end time is past shift end
                   final eh = int.tryParse(r.otTimeEnd.split(':')[0]) ?? 0;
                   return eh > shiftEnd.hour;
                 });
@@ -564,17 +574,18 @@ class TimesheetFunctions {
   /// [shiftEnd] is already the **reduced** end (original − 1h).
   /// Rules:
   ///   • lo < restEnd              → 0 h  (didn't work the afternoon)
-  ///   • lo ≥ reducedShiftEnd      → 4 h  (full afternoon credit)
-  ///   • restEnd ≤ lo < shiftEnd   → 4 − earlyBy  where earlyBy = (shiftEnd − lo) in h
+  ///   • lo ≥ reducedShiftEnd      → 4 h  (full afternoon credit = 8 - 0)
+  ///   • lo < reducedShiftEnd      → 4 − earlyBy  where earlyBy = (reducedShiftEnd − lo) in h
+  ///     Combined with morning (4h): total = 8 − earlyBy (regardless of whether lo falls
+  ///     in afternoon, rest window, or even morning — the clamp prevents negative values).
   ///   floor at 0; cap at 4.
   static double _youngChildAfternoon(
     DateTime lo,
     DateTime restEnd,
     DateTime reducedShiftEnd,
   ) {
-    if (lo.isBefore(restEnd)) return 0;
     if (!lo.isBefore(reducedShiftEnd)) return 4; // on time or later
-    // Left before the reduced end → partial credit
+    // Left before the reduced end → partial credit: 8 - earlyBy total (incl. morning 4h)
     final earlyBy = reducedShiftEnd.difference(lo).inMinutes / 60;
     return (4 - earlyBy).clamp(0, 4);
   }

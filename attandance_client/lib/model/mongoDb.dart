@@ -277,7 +277,7 @@ class MongoDb {
       final result = await colOtRegister.updateOne(
         where.eq('_id', id),
         modify
-            .set('otDate', otDate)
+            .set('otDate', otDate.toUtcKeepValue())
             .set('otTimeBegin', otTimeBegin)
             .set('otTimeEnd', otTimeEnd),
       );
@@ -358,8 +358,8 @@ class MongoDb {
       final result = await colShiftRegister.updateOne(
         where.id(oid),
         modify
-            .set('fromDate', fromDate)
-            .set('toDate', toDate)
+            .set('fromDate', fromDate.toUtcKeepValue())
+            .set('toDate', toDate.toUtcKeepValue())
             .set('shift', shift),
       );
       logger.d('updateShiftRegister: result=$result');

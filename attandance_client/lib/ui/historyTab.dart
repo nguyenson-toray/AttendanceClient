@@ -109,8 +109,10 @@ class _HistoryTabState extends State<HistoryTab> {
                         DateTime.now().toEndDay(),
                       ];
                     } else {
-                      App.gValue.dateRangeHistory =
-                          MyFunctions.extractDateRange(value.toString());
+                      final parsed =
+                          MyFunctions.extractDateRangeFromPicker(value);
+                      if (parsed.length == 2)
+                        App.gValue.dateRangeHistory = parsed;
                     }
                     _reload();
                   },
