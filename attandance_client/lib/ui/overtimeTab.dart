@@ -1581,11 +1581,11 @@ class OtRegisterDataSource extends DataGridSource {
           DataGridCell<String>(columnName: 'requestNo', value: e.requestNo),
           DataGridCell<String>(
             columnName: 'requestDate',
-            value: DateFormat('yyyy-MM-dd').format(e.requestDate),
+            value: DateFormat('dd/MM/yyyy').format(e.requestDate),
           ),
           DataGridCell<String>(
             columnName: 'otDate',
-            value: DateFormat('yyyy-MM-dd').format(e.otDate),
+            value: DateFormat('dd/MM/yyyy').format(e.otDate),
           ),
           DataGridCell<String>(columnName: 'otTimeBegin', value: e.otTimeBegin),
           DataGridCell<String>(columnName: 'otTimeEnd', value: e.otTimeEnd),
@@ -1609,11 +1609,11 @@ class OtRegisterDataSource extends DataGridSource {
           DataGridCell<String>(columnName: 'requestNo', value: e.requestNo),
           DataGridCell<String>(
             columnName: 'requestDate',
-            value: DateFormat('yyyy-MM-dd').format(e.requestDate),
+            value: DateFormat('dd/MM/yyyy').format(e.requestDate),
           ),
           DataGridCell<String>(
             columnName: 'otDate',
-            value: DateFormat('yyyy-MM-dd').format(e.otDate),
+            value: DateFormat('dd/MM/yyyy').format(e.otDate),
           ),
           DataGridCell<String>(columnName: 'otTimeBegin', value: e.otTimeBegin),
           DataGridCell<String>(columnName: 'otTimeEnd', value: e.otTimeEnd),
@@ -1642,7 +1642,7 @@ class OtRegisterDataSource extends DataGridSource {
         old[1], // requestDate
         DataGridCell<String>(
           columnName: 'otDate',
-          value: DateFormat('yyyy-MM-dd').format(otDate),
+          value: DateFormat('dd/MM/yyyy').format(otDate),
         ),
         DataGridCell<String>(columnName: 'otTimeBegin', value: begin),
         DataGridCell<String>(columnName: 'otTimeEnd', value: end),

@@ -5,7 +5,7 @@ import 'package:attandance_client/model/otRegister.dart';
 import 'package:attandance_client/model/shiftRegister.dart';
 import 'package:attandance_client/model/timeSheetDate.dart';
 import 'package:attandance_client/main.dart';
-import 'package:excel/excel.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xl;
 import 'package:intl/intl.dart';
 import 'package:oktoast/oktoast.dart';
 
@@ -290,11 +290,13 @@ class TimesheetFunctions {
         final pregnantUpperBound = mLeaveBegin ?? mEnd;
 
         // Determine regime FIRST so isYoungChild is correct for shiftEnd & afternoon calc
-        final bool isPregnant = mBegin != null &&
+        final bool isPregnant =
+            mBegin != null &&
             pregnantUpperBound != null &&
             !date.isBefore(mBegin) &&
             date.isBefore(pregnantUpperBound);
-        final bool isYoungChild = !isPregnant &&
+        final bool isYoungChild =
+            !isPregnant &&
             mLeaveEnd != null &&
             mEnd != null &&
             !date.isBefore(mLeaveEnd) &&
@@ -721,17 +723,30 @@ class TimesheetFunctions {
     return _OtResult(totalActual, totalApproved, totalFinal);
   }
 
-  // ── Excel helpers ─────────────────────────────────────────────────────────────
-
-  /// Round to 2 decimal places only at write time — never during calculation.
-  static DoubleCellValue _d(double v) =>
-      DoubleCellValue(double.parse(v.toStringAsFixed(2)));
-
   // ── Excel export ─────────────────────────────────────────────────────────────
+
+  static double _r2(double v) => double.parse(v.toStringAsFixed(2));
+
+  // Create an xl.Table with Medium2 style
+  static void _xlsTable(
+    xl.Worksheet sheet,
+    int lastRow,
+    int lastCol,
+    String name,
+  ) {
+    if (lastRow < 2 || lastCol < 1) return;
+    final range = sheet.getRangeByIndex(1, 1, lastRow, lastCol);
+    final table = sheet.tableCollection.create(name, range);
+    table.builtInTableStyle = xl.ExcelTableBuiltInStyle.tableStyleMedium2;
+    table.showBandedRows = true;
+    table.showFirstColumn = false;
+    table.showLastColumn = false;
+  }
 
   static Future<void> exportTimesheets(
     TimesheetResult tsResult, {
     required List<Employee> employees,
+    List<DateTime>? dateRange,
   }) async {
     final data = tsResult.data;
     final anomalies = tsResult.anomalies;
@@ -740,129 +755,173 @@ class TimesheetFunctions {
       return;
     }
     try {
-      final excel = Excel.createExcel();
-      // ── Sheet 0: Important Note ──────────────────────────────────────────────
-      final noteSheet = excel['Important Note'];
-      noteSheet.appendRow([
-        TextCellValue(
-          'Important Note — generated ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}',
-        ),
-      ]);
-      noteSheet.appendRow([TextCellValue('')]);
-      noteSheet.appendRow([TextCellValue('Type'), TextCellValue('Detail')]);
-      if (anomalies.isEmpty) {
-        noteSheet.appendRow([
-          TextCellValue(''),
-          TextCellValue('No anomalies detected.'),
-        ]);
-      } else {
-        for (final a in anomalies) {
-          // Split "[$type] $rest" into two cells for readability
-          final typeEnd = a.indexOf(']');
-          final type = typeEnd > 0 ? a.substring(0, typeEnd + 1) : '';
-          final detail = typeEnd > 0 ? a.substring(typeEnd + 2) : a;
-          noteSheet.appendRow([TextCellValue(type), TextCellValue(detail)]);
-        }
-      }
+      final workbook = xl.Workbook();
 
-      // Build employee lookup (used by both Detail and Summary sheets)
+      // Build employee lookup
       final empLookup = <String, Employee>{
         for (final e in employees)
           if (e.empId != null) e.empId!: e,
       };
 
-      DateCellValue? _empJoiningDate(Employee? emp) {
+      DateTime? _joiningDate(Employee? emp) {
         if (emp?.joiningDate == null || emp!.joiningDate!.year <= 1900)
           return null;
-        return DateCellValue(
-          year: emp.joiningDate!.year,
-          month: emp.joiningDate!.month,
-          day: emp.joiningDate!.day,
-        );
+        return emp.joiningDate;
       }
 
-      DateCellValue? _empResignDate(Employee? emp) {
+      DateTime? _resignDate(Employee? emp) {
         if (emp?.resignOn == null || emp!.resignOn!.year >= 2099) return null;
         if (!(emp.workStatus ?? '').contains('Resigned')) return null;
-        return DateCellValue(
-          year: emp.resignOn!.year,
-          month: emp.resignOn!.month,
-          day: emp.resignOn!.day,
-        );
+        return emp.resignOn;
       }
 
+      void _setDate(xl.Range cell, DateTime? d) {
+        if (d == null) return;
+        cell.setDateTime(d);
+        cell.numberFormat = 'dd/MM/yyyy';
+      }
+
+      void _setTime(xl.Range cell, DateTime? t) {
+        if (t == null) return;
+        cell.setDateTime(t);
+        cell.numberFormat = 'HH:mm:ss';
+      }
+
+      void _setNum(xl.Range cell, double v) {
+        cell.setNumber(_r2(v));
+        cell.numberFormat = '0.00';
+      }
+
+      // ── Sheet 0: Important Note ─────────────────────────────────────────────
+      final noteSheet = workbook.worksheets[0];
+      noteSheet.name = 'Important Note';
+      noteSheet
+          .getRangeByIndex(1, 1)
+          .setText(
+            'Important Note — generated ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+          );
+      noteSheet.getRangeByIndex(3, 1).setText('Type');
+      noteSheet.getRangeByIndex(3, 2).setText('Detail');
+      final noteHdr = noteSheet.getRangeByIndex(3, 1, 3, 2);
+      noteHdr.cellStyle.bold = true;
+      noteHdr.cellStyle.backColor = '#D9E2F3';
+      noteHdr.cellStyle.hAlign = xl.HAlignType.center;
+      noteHdr.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+
+      int noteRow = 4;
+      if (anomalies.isEmpty) {
+        noteSheet.getRangeByIndex(noteRow, 2).setText('No anomalies detected.');
+        noteRow++;
+      } else {
+        for (final a in anomalies) {
+          final typeEnd = a.indexOf(']');
+          noteSheet
+              .getRangeByIndex(noteRow, 1)
+              .setText(typeEnd > 0 ? a.substring(0, typeEnd + 1) : '');
+          noteSheet
+              .getRangeByIndex(noteRow, 2)
+              .setText(typeEnd > 0 ? a.substring(typeEnd + 2) : a);
+          noteRow++;
+        }
+      }
+      if (noteRow > 4) {
+        noteSheet
+                .getRangeByIndex(4, 1, noteRow - 1, 2)
+                .cellStyle
+                .borders
+                .all
+                .lineStyle =
+            xl.LineStyle.thin;
+      }
+      noteSheet.getRangeByIndex(1, 1).columnWidth = 20;
+      noteSheet.getRangeByIndex(1, 2).columnWidth = 80;
+
       // ── Sheet 1: Detail ─────────────────────────────────────────────────────
-      final detail = excel['Detail'];
-      detail.appendRow(
-        [
-          'No',
-          'Date',
-          'Employee ID',
-          'Finger ID',
-          'Full name',
-          'Department',
-          'Section',
-          'Group',
-          'Shift',
-          'First In',
-          'Last Out',
-          'Working (hour)',
-          'Working (day)',
-          'OT Actual (hours)',
-          'OT Approved (hours)',
-          'OT Final',
-          'Note Checkin',
-          'Note Sunday',
-          'Joining Date',
-          'Resign Date',
-        ].map((h) => TextCellValue(h)).toList(),
-      );
+      final detail = workbook.worksheets.addWithName('Detail');
+      const detailHdrs = [
+        'No',
+        'Date',
+        'Employee ID',
+        'Finger ID',
+        'Full name',
+        'Department',
+        'Section',
+        'Group',
+        'Shift',
+        'First In',
+        'Last Out',
+        'Working (hour)',
+        'Working (day)',
+        'OT Actual (hours)',
+        'OT Approved (hours)',
+        'OT Final',
+        'Note Checkin',
+        'Note Sunday',
+        'Joining Date',
+        'Resign Date',
+      ];
+      for (int c = 0; c < detailHdrs.length; c++) {
+        detail.getRangeByIndex(1, c + 1).setText(detailHdrs[c]);
+      }
 
       int detailNo = 1;
       for (final ts in data) {
+        final row = detailNo + 1;
         final emp = empLookup[ts.empId];
-        detail.appendRow([
-          IntCellValue(detailNo++),
-          DateCellValue(
-            year: ts.date.year,
-            month: ts.date.month,
-            day: ts.date.day,
-          ),
-          TextCellValue(ts.empId),
-          IntCellValue(ts.attFingerId),
-          TextCellValue(ts.name),
-          TextCellValue(ts.department),
-          TextCellValue(ts.section),
-          TextCellValue(ts.group),
-          TextCellValue(ts.shift),
-          ts.firstIn != null
-              ? TimeCellValue(
-                  hour: ts.firstIn!.hour,
-                  minute: ts.firstIn!.minute,
-                  second: ts.firstIn!.second,
-                )
-              : TextCellValue(''),
-          ts.lastOut != null
-              ? TimeCellValue(
-                  hour: ts.lastOut!.hour,
-                  minute: ts.lastOut!.minute,
-                  second: ts.lastOut!.second,
-                )
-              : TextCellValue(''),
-          _d(ts.normalHours),
-          _d(ts.normalHours / 8),
-          _d(ts.otHours),
-          _d(ts.otHoursApproved),
-          _d(ts.otHoursFinal),
-          TextCellValue(ts.attNote2),
-          TextCellValue(ts.attNote3),
-          _empJoiningDate(emp) ?? TextCellValue(''),
-          _empResignDate(emp) ?? TextCellValue(''),
-        ]);
+        detail.getRangeByIndex(row, 1).setNumber(detailNo.toDouble());
+        _setDate(detail.getRangeByIndex(row, 2), ts.date);
+        detail.getRangeByIndex(row, 3).setText(ts.empId);
+        detail.getRangeByIndex(row, 4).setNumber(ts.attFingerId.toDouble());
+        detail.getRangeByIndex(row, 5).setText(ts.name);
+        detail.getRangeByIndex(row, 6).setText(ts.department);
+        detail.getRangeByIndex(row, 7).setText(ts.section);
+        detail.getRangeByIndex(row, 8).setText(ts.group);
+        detail.getRangeByIndex(row, 9).setText(ts.shift);
+        _setTime(detail.getRangeByIndex(row, 10), ts.firstIn);
+        _setTime(detail.getRangeByIndex(row, 11), ts.lastOut);
+        _setNum(detail.getRangeByIndex(row, 12), ts.normalHours);
+        _setNum(detail.getRangeByIndex(row, 13), ts.normalHours / 8);
+        _setNum(detail.getRangeByIndex(row, 14), ts.otHours);
+        _setNum(detail.getRangeByIndex(row, 15), ts.otHoursApproved);
+        _setNum(detail.getRangeByIndex(row, 16), ts.otHoursFinal);
+        detail.getRangeByIndex(row, 17).setText(ts.attNote2);
+        detail.getRangeByIndex(row, 18).setText(ts.attNote3);
+        _setDate(detail.getRangeByIndex(row, 19), _joiningDate(emp));
+        _setDate(detail.getRangeByIndex(row, 20), _resignDate(emp));
+        detailNo++;
       }
+      _xlsTable(detail, data.length + 1, detailHdrs.length, 'TableDetail');
+      // Fixed column widths + header height/wrap
+      const detailWidths = [
+        4.0,
+        10.0,
+        10.0,
+        6.0,
+        24.0,
+        10.0,
+        14.0,
+        18.0,
+        7.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        20.0,
+        20.0,
+        10.0,
+        10.0,
+      ];
+      for (int i = 0; i < detailWidths.length; i++) {
+        detail.getRangeByIndex(1, i + 1).columnWidth = detailWidths[i];
+      }
+      detail.getRangeByIndex(1, 1, 1, detailHdrs.length).rowHeight = 50;
+      detail.getRangeByIndex(1, 1, 1, detailHdrs.length).cellStyle.wrapText =
+          true;
 
       // ── Sheet 2: Summary ────────────────────────────────────────────────────
-      // Group by empId, preserving the first-seen order
       final empOrder = <String>[];
       final totals = <String, _EmpSummary>{};
       for (final ts in data) {
@@ -884,52 +943,155 @@ class TimesheetFunctions {
         s.totalOtFinal += ts.otHoursFinal;
       }
 
-      final summary = excel['Summary'];
-      summary.appendRow(
-        [
-          'No',
-          'Employee ID',
-          'Full name',
-          'Department',
-          'Section',
-          'Group',
-          'Total Working (hours)',
-          'Total Working (days)',
-          'Total OT Actual (hours)',
-          'Total OT Aproved (hours)',
-          'Total OT Final (hours)',
-          'Joining Date',
-          'Resign Date',
-        ].map((h) => TextCellValue(h)).toList(),
-      );
+      final summary = workbook.worksheets.addWithName('Summary');
+      const sumHdrs = [
+        'No',
+        'Employee ID',
+        'Full name',
+        'Department',
+        'Section',
+        'Group',
+        'Total Working (hours)',
+        'Total Working (days)',
+        'Total OT Actual (hours)',
+        'Total OT Approved (hours)',
+        'Total OT Final (hours)',
+        'Joining Date',
+        'Resign Date',
+      ];
+      for (int c = 0; c < sumHdrs.length; c++) {
+        summary.getRangeByIndex(1, c + 1).setText(sumHdrs[c]);
+      }
 
-      int no = 1;
+      int sumNo = 1;
       for (final empId in empOrder) {
         final s = totals[empId]!;
         final emp = empLookup[empId];
-        summary.appendRow([
-          IntCellValue(no++),
-          TextCellValue(s.empId),
-          TextCellValue(s.name),
-          TextCellValue(s.department),
-          TextCellValue(s.section),
-          TextCellValue(s.group),
-          _d(s.totalNormalHours),
-          _d(s.totalWorkingDays),
-          _d(s.totalOtActual),
-          _d(s.totalOtApproved),
-          _d(s.totalOtFinal),
-          _empJoiningDate(emp) ?? TextCellValue(''),
-          _empResignDate(emp) ?? TextCellValue(''),
-        ]);
+        final row = sumNo + 1;
+        summary.getRangeByIndex(row, 1).setNumber(sumNo.toDouble());
+        summary.getRangeByIndex(row, 2).setText(s.empId);
+        summary.getRangeByIndex(row, 3).setText(s.name);
+        summary.getRangeByIndex(row, 4).setText(s.department);
+        summary.getRangeByIndex(row, 5).setText(s.section);
+        summary.getRangeByIndex(row, 6).setText(s.group);
+        _setNum(summary.getRangeByIndex(row, 7), s.totalNormalHours);
+        _setNum(summary.getRangeByIndex(row, 8), s.totalWorkingDays);
+        _setNum(summary.getRangeByIndex(row, 9), s.totalOtActual);
+        _setNum(summary.getRangeByIndex(row, 10), s.totalOtApproved);
+        _setNum(summary.getRangeByIndex(row, 11), s.totalOtFinal);
+        _setDate(summary.getRangeByIndex(row, 12), _joiningDate(emp));
+        _setDate(summary.getRangeByIndex(row, 13), _resignDate(emp));
+        sumNo++;
+      }
+      _xlsTable(summary, empOrder.length + 1, sumHdrs.length, 'TableSummary');
+      // Fixed column widths + header height/wrap
+      const sumWidths = [
+        4.0,
+        10.0,
+        24.0,
+        10.0,
+        14.0,
+        18.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        8.0,
+        10.0,
+        10.0,
+      ];
+      for (int i = 0; i < sumWidths.length; i++) {
+        summary.getRangeByIndex(1, i + 1).columnWidth = sumWidths[i];
+      }
+      summary.getRangeByIndex(1, 1, 1, sumHdrs.length).rowHeight = 50;
+      summary.getRangeByIndex(1, 1, 1, sumHdrs.length).cellStyle.wrapText =
+          true;
+
+      // ── Sheet 3: Shift pivot ─────────────────────────────────────────────────
+      final pivotData = <String, Map<String, String>>{};
+      final pivotEmpOrder = <String>[];
+      final pivotDates = <String, DateTime>{};
+
+      for (final ts in data) {
+        if (ts.shift != 'Shift 1' && ts.shift != 'Shift 2') continue;
+        final dk = _dayKey(ts.date);
+        pivotDates[dk] = ts.date;
+        if (!pivotData.containsKey(ts.empId)) {
+          pivotData[ts.empId] = {};
+          pivotEmpOrder.add(ts.empId);
+        }
+        pivotData[ts.empId]![dk] = ts.shift;
       }
 
-      // Remove default empty sheet created by Excel.createExcel()
-      excel.delete('Sheet1');
+      if (pivotData.isNotEmpty) {
+        final sortedDateKeys = pivotDates.keys.toList()..sort();
+        final dateFmt = DateFormat('dd/MM');
+        final shiftSheet = workbook.worksheets.addWithName('Shift');
+        final shiftLastCol = 2 + sortedDateKeys.length;
 
-      await MyFunctions.saveAndOpenExcel(
-        excel,
-        MyFunctions.exportFileName('Timesheet'),
+        // Header row
+        shiftSheet.getRangeByIndex(1, 1).setText('Employee ID');
+        shiftSheet.getRangeByIndex(1, 2).setText('Full Name');
+        for (int ci = 0; ci < sortedDateKeys.length; ci++) {
+          shiftSheet
+              .getRangeByIndex(1, ci + 3)
+              .setText(dateFmt.format(pivotDates[sortedDateKeys[ci]]!));
+        }
+        final shiftHdr = shiftSheet.getRangeByIndex(1, 1, 1, shiftLastCol);
+        shiftHdr.cellStyle.bold = true;
+        shiftHdr.cellStyle.backColor = '#D9E2F3';
+        shiftHdr.cellStyle.hAlign = xl.HAlignType.center;
+        shiftHdr.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+
+        const shift1Hex = '#bfd4ed';
+        const shift2Hex = '#beedc8';
+
+        int shiftRow = 2;
+        for (final empId in pivotEmpOrder) {
+          final empObj = empLookup[empId];
+          final shiftMap = pivotData[empId]!;
+
+          shiftSheet.getRangeByIndex(shiftRow, 1).setText(empId);
+          shiftSheet.getRangeByIndex(shiftRow, 1).cellStyle.hAlign =
+              xl.HAlignType.center;
+          shiftSheet
+                  .getRangeByIndex(shiftRow, 1)
+                  .cellStyle
+                  .borders
+                  .all
+                  .lineStyle =
+              xl.LineStyle.thin;
+          shiftSheet.getRangeByIndex(shiftRow, 2).setText(empObj?.name ?? '');
+          shiftSheet
+                  .getRangeByIndex(shiftRow, 2)
+                  .cellStyle
+                  .borders
+                  .all
+                  .lineStyle =
+              xl.LineStyle.thin;
+
+          for (int ci = 0; ci < sortedDateKeys.length; ci++) {
+            final shiftVal = shiftMap[sortedDateKeys[ci]] ?? '';
+            final cell = shiftSheet.getRangeByIndex(shiftRow, ci + 3);
+            cell.setText(shiftVal);
+            cell.cellStyle.hAlign = xl.HAlignType.center;
+            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+            if (shiftVal == 'Shift 1') cell.cellStyle.backColor = shift1Hex;
+            if (shiftVal == 'Shift 2') cell.cellStyle.backColor = shift2Hex;
+          }
+          shiftRow++;
+        }
+
+        shiftSheet.getRangeByIndex(1, 1).columnWidth = 14;
+        shiftSheet.getRangeByIndex(1, 2).columnWidth = 22;
+        for (int ci = 3; ci <= shiftLastCol; ci++) {
+          shiftSheet.getRangeByIndex(1, ci).columnWidth = 10;
+        }
+      }
+
+      await MyFunctions.saveAndOpenWorkbook(
+        workbook,
+        MyFunctions.exportFileName('Timesheet', dateRange: dateRange),
       );
     } catch (e) {
       showToast('Export error: $e');

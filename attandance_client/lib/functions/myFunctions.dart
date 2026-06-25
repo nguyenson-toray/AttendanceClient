@@ -1,13 +1,14 @@
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:archive/archive.dart';
 import 'package:attandance_client/appColors.dart';
 import 'package:attandance_client/main.dart';
 import 'package:attandance_client/model/attLog.dart';
 import 'package:attandance_client/model/employee.dart';
 import 'package:attandance_client/model/otRegister.dart';
 import 'package:attandance_client/model/shiftRegister.dart';
-import 'package:excel/excel.dart' hide Border, BorderStyle;
-import 'package:excel/excel.dart' as xl show Border, BorderStyle;
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xl;
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
@@ -165,46 +166,78 @@ class MyFunctions {
   }
 
   /// Generate a file name with timestamp: [type]_YYMMDD_HHMMSS
-  static String exportFileName(String type) {
+  /// If [dateRange] is provided: [type]_fromYYMMDD_toYYMMDD_HHMMSS
+  static String exportFileName(String type, {List<DateTime>? dateRange}) {
     final now = DateTime.now();
     final ts = DateFormat('yyMMdd_HHmmss').format(now);
+    if (dateRange != null && dateRange.length == 2) {
+      final from = DateFormat('yyMMdd').format(dateRange[0]);
+      final to = DateFormat('yyMMdd').format(dateRange[1]);
+      return '${type}_${from}_${to}_$ts';
+    }
     return '${type}_$ts';
   }
 
-  /// Save Excel bytes to file, show toast, and open the file.
-  static Future<void> saveAndOpenExcel(Excel excel, String fileName) async {
-    // Yield to event loop so the overlay can render before heavy encoding
+  /// Save workbook bytes to file, show toast, and open the file.
+  static Future<void> saveAndOpenWorkbook(xl.Workbook workbook, String fileName) async {
     await Future.delayed(const Duration(milliseconds: 50));
-    final bytes = excel.encode();
-    if (bytes == null) {
-      showToast('Export failed: could not encode file');
-      return;
-    }
+    final bytes = Uint8List.fromList(workbook.saveAsStream());
+    workbook.dispose();
     final path = await FileSaver.instance.saveFile(
       name: fileName,
-      bytes: Uint8List.fromList(bytes),
+      bytes: bytes,
       fileExtension: 'xlsx',
       mimeType: MimeType.microsoftExcel,
     );
     showToast('Exported at Download\\$fileName.xlsx');
-    // Open file
-    if (Platform.isWindows) {
-      Process.run('explorer', [path]);
+    if (Platform.isWindows) Process.run('explorer', [path]);
+  }
+
+  // Set a cell value using the appropriate xlsio method
+  static void _setCellValue(xl.Range range, dynamic v) {
+    if (v == null) { range.setText(''); return; }
+    if (v is int) { range.setNumber(v.toDouble()); return; }
+    if (v is double) { range.setNumber(v); range.numberFormat = '0.00'; return; }
+    if (v is DateTime) {
+      range.setDateTime(v);
+      range.numberFormat = 'dd/MM/yyyy';
+      return;
+    }
+    range.setText(v.toString());
+  }
+
+  // Apply column widths: data-driven (long header names don't inflate width)
+  static void _applyColumnWidths(
+    xl.Worksheet sheet,
+    List<String> headers,
+    List<List<dynamic>> rows,
+  ) {
+    for (int ci = 0; ci < headers.length; ci++) {
+      final col = ci + 1;
+      final hLen = headers[ci].length.toDouble();
+      int maxData = 0;
+      for (final row in rows) {
+        if (ci < row.length) {
+          final len = row[ci]?.toString().length ?? 0;
+          if (len > maxData) maxData = len;
+        }
+      }
+      final d = maxData.toDouble();
+      final softMin = (hLen * 0.5).clamp(8.0, 15.0);
+      final effective = d > softMin ? d : softMin;
+      sheet.getRangeByIndex(1, col).columnWidth = (effective * 1.1 + 2.0).clamp(8.0, 55.0);
     }
   }
 
-  /// Style header row: bold text
-  static void styleHeader(Sheet sheet, int colCount) {
-    for (int c = 0; c < colCount; c++) {
-      final cell = sheet.cell(
-        CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0),
-      );
-      cell.cellStyle = CellStyle(
-        bold: true,
-        backgroundColorHex: ExcelColor.fromHexString('#D9E2F3'),
-        horizontalAlign: HorizontalAlign.Center,
-      );
-    }
+  // Create an Excel native Table with Medium2 style
+  static void createTable(xl.Worksheet sheet, int lastRow, int lastCol, String name) {
+    if (lastRow < 2 || lastCol < 1) return;
+    final range = sheet.getRangeByIndex(1, 1, lastRow, lastCol);
+    final table = sheet.tableCollection.create(name, range);
+    table.builtInTableStyle = xl.ExcelTableBuiltInStyle.tableStyleMedium2;
+    table.showBandedRows = true;
+    table.showFirstColumn = false;
+    table.showLastColumn = false;
   }
 
   /// Export template with sample data from the DataGridSource.
@@ -217,50 +250,43 @@ class MyFunctions {
     int sampleRows = 10,
   }) async {
     try {
-      final excel = Excel.createExcel();
-      final sheet = excel['Sheet1'];
-      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
-      styleHeader(sheet, headers.length);
+      final workbook = xl.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = type;
 
-      // Add sample data rows from source if available
-      final rows = source?.rows ?? [];
-      final count = rows.length < sampleRows ? rows.length : sampleRows;
+      // Header row
+      for (int c = 0; c < headers.length; c++) {
+        sheet.getRangeByIndex(1, c + 1).setText(headers[c]);
+      }
+
+      // Sample data rows
+      final srcRows = source?.rows ?? [];
+      final count = srcRows.length < sampleRows ? srcRows.length : sampleRows;
+      final dataForWidth = <List<dynamic>>[];
+
       for (int r = 0; r < count; r++) {
-        final cells = rows[r].getCells();
-        final rowData = <CellValue>[];
+        final cells = srcRows[r].getCells();
+        final rowData = <dynamic>[];
         if (columnIndices != null) {
           for (final idx in columnIndices) {
-            rowData.add(_toCellValue(idx < cells.length ? cells[idx].value : ''));
+            rowData.add(idx < cells.length ? cells[idx].value : '');
           }
         } else {
           for (int c = 0; c < headers.length && c < cells.length; c++) {
-            rowData.add(_toCellValue(cells[c].value));
+            rowData.add(cells[c].value);
           }
         }
-        sheet.appendRow(rowData);
-      }
-
-      // If no data or fewer rows than sampleRows, fill remaining with empty bordered rows
-      if (count < sampleRows) {
-        final thinBorder = xl.Border(borderStyle: xl.BorderStyle.Thin);
-        final borderStyle = CellStyle(
-          leftBorder: thinBorder,
-          rightBorder: thinBorder,
-          topBorder: thinBorder,
-          bottomBorder: thinBorder,
-        );
-        for (int r = count + 1; r <= sampleRows; r++) {
-          for (int c = 0; c < headers.length; c++) {
-            final cell = sheet.cell(
-              CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
-            );
-            cell.value = TextCellValue('');
-            cell.cellStyle = borderStyle;
-          }
+        for (int c = 0; c < rowData.length; c++) {
+          _setCellValue(sheet.getRangeByIndex(r + 2, c + 1), rowData[c]);
         }
+        dataForWidth.add(rowData);
       }
 
-      await saveAndOpenExcel(excel, exportFileName('${type}_Template'));
+      final lastRow = count + 1;
+      createTable(sheet, lastRow < 2 ? 2 : lastRow, headers.length, '${type}_Template');
+      _applyColumnWidths(sheet, headers, dataForWidth);
+
+      await saveAndOpenWorkbook(workbook, exportFileName('${type}_Template'));
     } catch (e) {
       showToast('Export error: $e');
     }
@@ -274,86 +300,40 @@ class MyFunctions {
     required String type,
   }) async {
     try {
-      final excel = Excel.createExcel();
-      final sheet = excel['Sheet1'];
+      final workbook = xl.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = type;
 
       // Header row
-      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
-      styleHeader(sheet, headers.length);
-
-      // Data rows
-      for (final row in source.rows) {
-        sheet.appendRow(
-          row.getCells().map((c) => _toCellValue(c.value)).toList(),
-        );
+      for (int c = 0; c < headers.length; c++) {
+        sheet.getRangeByIndex(1, c + 1).setText(headers[c]);
       }
 
-      await saveAndOpenExcel(excel, exportFileName(type));
+      // Data rows
+      final rows = source.rows;
+      final dataForWidth = <List<dynamic>>[];
+      for (int r = 0; r < rows.length; r++) {
+        final cells = rows[r].getCells();
+        final rowData = cells.map((c) => c.value).toList();
+        for (int c = 0; c < cells.length; c++) {
+          _setCellValue(sheet.getRangeByIndex(r + 2, c + 1), cells[c].value);
+        }
+        dataForWidth.add(rowData);
+      }
+
+      createTable(sheet, rows.length + 1, headers.length, type);
+      _applyColumnWidths(sheet, headers, dataForWidth);
+      await saveAndOpenWorkbook(workbook, exportFileName(type));
     } catch (e) {
       showToast('Export error: $e');
     }
   }
 
-  // Date patterns: yyyy-MM-dd, dd-MM-yyyy, dd/MM/yyyy
-  static final _dateRegex = RegExp(r'^\d{4}-\d{2}-\d{2}$');
-  // DateTime patterns: yyyy-MM-dd HH:mm
-  static final _dateTimeRegex = RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$');
-  // Time patterns: HH:mm
-  static final _timeRegex = RegExp(r'^\d{2}:\d{2}$');
-
-  static CellValue _toCellValue(dynamic v) {
-    if (v == null) return TextCellValue('');
-    if (v is int) return IntCellValue(v);
-    if (v is double) return DoubleCellValue(v);
-    if (v is DateTime) {
-      return DateTimeCellValue.fromDateTime(v);
-    }
-    final s = v.toString();
-    if (s.isEmpty) return TextCellValue('');
-    // Try date: yyyy-MM-dd
-    if (_dateRegex.hasMatch(s)) {
-      final dt = DateTime.tryParse(s);
-      if (dt != null) {
-        return DateCellValue(year: dt.year, month: dt.month, day: dt.day);
-      }
-    }
-    // Try datetime: yyyy-MM-dd HH:mm
-    if (_dateTimeRegex.hasMatch(s)) {
-      final dt = DateTime.tryParse(s.replaceFirst(' ', 'T'));
-      if (dt != null) {
-        return DateTimeCellValue(
-          year: dt.year,
-          month: dt.month,
-          day: dt.day,
-          hour: dt.hour,
-          minute: dt.minute,
-        );
-      }
-    }
-    // Try time: HH:mm
-    if (_timeRegex.hasMatch(s)) {
-      final parts = s.split(':');
-      return TimeCellValue(
-        hour: int.parse(parts[0]),
-        minute: int.parse(parts[1]),
-      );
-    }
-    return TextCellValue(s);
-  }
-
   // ─── helpers ──────────────────────────────────────────────────────────────
 
-  static Excel? _pickAndDecodeExcel(Uint8List bytes) {
-    return Excel.decodeBytes(bytes);
-  }
-
-  static String _cell(Sheet sheet, int row, int col) =>
-      sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row))
-          .value
-          ?.toString()
-          .trim() ??
-      '';
+  // xlsio is write-only; reading is done via the excel package (separate import flow).
+  // _cell and _pickAndDecodeExcel are intentionally removed; import functions
+  // use file_picker + the excel package separately where needed.
 
   static DateTime? _parseDate(String s) {
     if (s.isEmpty) return null;
@@ -406,6 +386,81 @@ class MyFunctions {
     return result?.files.single.bytes;
   }
 
+  // ─── minimal xlsx reader (archive pkg — compatible with xlsio's archive ^4) ──
+  // Returns a 0-indexed [row][col] string grid; row 0 = header.
+  static List<List<String>> _readXlsx(Uint8List bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes);
+
+    // Shared strings table
+    final ss = <String>[];
+    final ssEntry = archive.findFile('xl/sharedStrings.xml');
+    if (ssEntry != null) {
+      final xml = utf8.decode(ssEntry.content as List<int>);
+      for (final m in RegExp(r'<si>([\s\S]*?)</si>').allMatches(xml)) {
+        final t = RegExp(
+          r'<t[^>]*>([\s\S]*?)</t>',
+        ).firstMatch(m.group(1)!)?.group(1) ?? '';
+        ss.add(_unescXml(t));
+      }
+    }
+
+    // Worksheet (first sheet)
+    final sheetEntry = archive.findFile('xl/worksheets/sheet1.xml');
+    if (sheetEntry == null) return [];
+    final xml = utf8.decode(sheetEntry.content as List<int>);
+
+    final result = <List<String>>[];
+    for (final rowM in RegExp(
+      r'<row\b[^>]*\br="(\d+)"[^>]*>([\s\S]*?)</row>',
+    ).allMatches(xml)) {
+      final rowIdx = int.parse(rowM.group(1)!) - 1;
+      while (result.length <= rowIdx) result.add([]);
+      final rowXml = rowM.group(2)!;
+
+      for (final cM in RegExp(
+        r'<c\b r="([A-Z]+)\d+"([^>]*)>([\s\S]*?)</c>',
+      ).allMatches(rowXml)) {
+        final colIdx = _xlColIdx(cM.group(1)!) - 1;
+        final attrs = cM.group(2)!;
+        final inner = cM.group(3)!;
+        while (result[rowIdx].length <= colIdx) result[rowIdx].add('');
+
+        final type =
+            RegExp(r'\bt="([^"]*)"').firstMatch(attrs)?.group(1) ?? '';
+        final vText =
+            RegExp(r'<v>([\s\S]*?)</v>').firstMatch(inner)?.group(1) ?? '';
+
+        String value;
+        if (type == 's') {
+          final idx = int.tryParse(vText) ?? 0;
+          value = idx < ss.length ? ss[idx] : '';
+        } else if (type == 'inlineStr' || type == 'str') {
+          value = _unescXml(
+            RegExp(r'<t[^>]*>([\s\S]*?)</t>').firstMatch(inner)?.group(1) ??
+                vText,
+          );
+        } else {
+          value = vText; // number / date serial / empty
+        }
+        result[rowIdx][colIdx] = value;
+      }
+    }
+    return result;
+  }
+
+  static int _xlColIdx(String col) {
+    int r = 0;
+    for (final c in col.codeUnits) r = r * 26 + (c - 64);
+    return r;
+  }
+
+  static String _unescXml(String s) => s
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'");
+
   static Employee _findEmployee(String empId) {
     return App.gValue.employees.firstWhere(
       (e) => e.empId == empId,
@@ -418,20 +473,23 @@ class MyFunctions {
   static Future<List<AttLog>?> importAttLogs() async {
     final bytes = await _pickXlsxBytes();
     if (bytes == null) return null;
-    final excel = _pickAndDecodeExcel(bytes);
-    if (excel == null) {
-      showToast('Cannot read file');
+    List<List<String>> xlRows;
+    try {
+      xlRows = _readXlsx(bytes);
+    } catch (e) {
+      showToast('Cannot read file: $e');
       return null;
     }
-    final sheet = excel.sheets.values.first;
     final logs = <AttLog>[];
     final skipped = <String>[];
-    for (int r = 1; r < sheet.maxRows; r++) {
-      final fingerId = int.tryParse(_cell(sheet, r, 0)) ?? 0;
-      final empId = _cell(sheet, r, 1);
-      final tsStr = _cell(sheet, r, 2);
-      final machineNo = int.tryParse(_cell(sheet, r, 3)) ?? 0;
-      if (empId.isEmpty && tsStr.isEmpty) continue; // blank row
+    for (int r = 1; r < xlRows.length; r++) {
+      final row = xlRows[r];
+      String at(int c) => c < row.length ? row[c].trim() : '';
+      final fingerId = int.tryParse(at(0)) ?? 0;
+      final empId = at(1);
+      final tsStr = at(2);
+      final machineNo = int.tryParse(at(3)) ?? 0;
+      if (empId.isEmpty && tsStr.isEmpty) continue;
       if (empId.isEmpty) {
         skipped.add('Row ${r + 1}: missing Employee ID');
         continue;
@@ -446,16 +504,14 @@ class MyFunctions {
         continue;
       }
       final emp = _findEmployee(empId);
-      logs.add(
-        AttLog(
-          objectId: '',
-          attFingerId: fingerId,
-          empId: empId,
-          name: emp.name ?? empId,
-          timestamp: ts,
-          machineNo: machineNo,
-        ),
-      );
+      logs.add(AttLog(
+        objectId: '',
+        attFingerId: fingerId,
+        empId: empId,
+        name: emp.name ?? empId,
+        timestamp: ts,
+        machineNo: machineNo,
+      ));
     }
     if (logs.isEmpty) {
       showToast(
@@ -478,23 +534,26 @@ class MyFunctions {
   static Future<List<OtRegister>?> importOtRegisters() async {
     final bytes = await _pickXlsxBytes();
     if (bytes == null) return null;
-    final excel = _pickAndDecodeExcel(bytes);
-    if (excel == null) {
-      showToast('Cannot read file');
+    List<List<String>> xlRows;
+    try {
+      xlRows = _readXlsx(bytes);
+    } catch (e) {
+      showToast('Cannot read file: $e');
       return null;
     }
-    final sheet = excel.sheets.values.first;
     final ots = <OtRegister>[];
     final skipped = <String>[];
     final baseId = DateTime.now().millisecondsSinceEpoch;
     final now = DateTime.now();
     final nowStr = DateFormat('yyyyMMddHHmm').format(now);
-    for (int r = 1; r < sheet.maxRows; r++) {
-      final otDateStr = _cell(sheet, r, 0);
-      final otTimeBegin = _cell(sheet, r, 1);
-      final otTimeEnd = _cell(sheet, r, 2);
-      final empId = _cell(sheet, r, 3);
-      if (empId.isEmpty && otDateStr.isEmpty) continue; // blank row
+    for (int r = 1; r < xlRows.length; r++) {
+      final row = xlRows[r];
+      String at(int c) => c < row.length ? row[c].trim() : '';
+      final otDateStr = at(0);
+      final otTimeBegin = at(1);
+      final otTimeEnd = at(2);
+      final empId = at(3);
+      if (empId.isEmpty && otDateStr.isEmpty) continue;
       if (empId.isEmpty) {
         skipped.add('Row ${r + 1}: missing Emp ID');
         continue;
@@ -510,18 +569,16 @@ class MyFunctions {
       }
       final emp = _findEmployee(empId);
       final empSuffix = empId.length > 5 ? empId.substring(5) : empId;
-      ots.add(
-        OtRegister(
-          id: baseId + r,
-          requestNo: '${nowStr}_$empSuffix',
-          requestDate: now,
-          otDate: otDate,
-          otTimeBegin: otTimeBegin,
-          otTimeEnd: otTimeEnd,
-          empId: empId,
-          name: emp.name ?? empId,
-        ),
-      );
+      ots.add(OtRegister(
+        id: baseId + r,
+        requestNo: '${nowStr}_$empSuffix',
+        requestDate: now,
+        otDate: otDate,
+        otTimeBegin: otTimeBegin,
+        otTimeEnd: otTimeEnd,
+        empId: empId,
+        name: emp.name ?? empId,
+      ));
     }
     if (ots.isEmpty) {
       showToast(
@@ -544,20 +601,23 @@ class MyFunctions {
   static Future<List<ShiftRegister>?> importShiftRegisters() async {
     final bytes = await _pickXlsxBytes();
     if (bytes == null) return null;
-    final excel = _pickAndDecodeExcel(bytes);
-    if (excel == null) {
-      showToast('Cannot read file');
+    List<List<String>> xlRows;
+    try {
+      xlRows = _readXlsx(bytes);
+    } catch (e) {
+      showToast('Cannot read file: $e');
       return null;
     }
-    final sheet = excel.sheets.values.first;
     final srs = <ShiftRegister>[];
     final skipped = <String>[];
-    for (int r = 1; r < sheet.maxRows; r++) {
-      final fromDateStr = _cell(sheet, r, 0);
-      final toDateStr = _cell(sheet, r, 1);
-      final shift = _cell(sheet, r, 2);
-      final empId = _cell(sheet, r, 3);
-      if (empId.isEmpty && fromDateStr.isEmpty) continue; // blank row
+    for (int r = 1; r < xlRows.length; r++) {
+      final row = xlRows[r];
+      String at(int c) => c < row.length ? row[c].trim() : '';
+      final fromDateStr = at(0);
+      final toDateStr = at(1);
+      final shift = at(2);
+      final empId = at(3);
+      if (empId.isEmpty && fromDateStr.isEmpty) continue;
       if (empId.isEmpty) {
         skipped.add('Row ${r + 1}: missing Emp ID');
         continue;
@@ -577,16 +637,14 @@ class MyFunctions {
         continue;
       }
       final emp = _findEmployee(empId);
-      srs.add(
-        ShiftRegister(
-          objectId: '',
-          empId: empId,
-          name: emp.name ?? empId,
-          fromDate: fromDate,
-          toDate: toDate,
-          shift: shift,
-        ),
-      );
+      srs.add(ShiftRegister(
+        objectId: '',
+        empId: empId,
+        name: emp.name ?? empId,
+        fromDate: fromDate,
+        toDate: toDate,
+        shift: shift,
+      ));
     }
     if (srs.isEmpty) {
       showToast(

@@ -59,6 +59,7 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
         Platform.localHostname,
       );
       App.gValue.permission = permission;
+      await App.mongoDb.saveLastLogin(Platform.localHostname);
       if (permission == 'deny') {
         if (!mounted) return;
         overlay.hide();

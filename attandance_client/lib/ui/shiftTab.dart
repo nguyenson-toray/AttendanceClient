@@ -1445,11 +1445,11 @@ class ShiftRegisterDataSource extends DataGridSource {
         cells: [
           DataGridCell<String>(
             columnName: 'fromDate',
-            value: DateFormat('yyyy-MM-dd').format(e.fromDate),
+            value: DateFormat('dd/MM/yyyy').format(e.fromDate),
           ),
           DataGridCell<String>(
             columnName: 'toDate',
-            value: DateFormat('yyyy-MM-dd').format(e.toDate),
+            value: DateFormat('dd/MM/yyyy').format(e.toDate),
           ),
           DataGridCell<String>(columnName: 'shift', value: e.shift),
           DataGridCell<String>(columnName: 'empId', value: e.empId),
@@ -1471,11 +1471,11 @@ class ShiftRegisterDataSource extends DataGridSource {
         cells: [
           DataGridCell<String>(
             columnName: 'fromDate',
-            value: DateFormat('yyyy-MM-dd').format(e.fromDate),
+            value: DateFormat('dd/MM/yyyy').format(e.fromDate),
           ),
           DataGridCell<String>(
             columnName: 'toDate',
-            value: DateFormat('yyyy-MM-dd').format(e.toDate),
+            value: DateFormat('dd/MM/yyyy').format(e.toDate),
           ),
           DataGridCell<String>(columnName: 'shift', value: e.shift),
           DataGridCell<String>(columnName: 'empId', value: e.empId),
@@ -1501,11 +1501,11 @@ class ShiftRegisterDataSource extends DataGridSource {
       cells: [
         DataGridCell<String>(
           columnName: 'fromDate',
-          value: DateFormat('yyyy-MM-dd').format(fromDate),
+          value: DateFormat('dd/MM/yyyy').format(fromDate),
         ),
         DataGridCell<String>(
           columnName: 'toDate',
-          value: DateFormat('yyyy-MM-dd').format(toDate),
+          value: DateFormat('dd/MM/yyyy').format(toDate),
         ),
         DataGridCell<String>(columnName: 'shift', value: shift),
         old[3], // empId

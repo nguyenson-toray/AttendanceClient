@@ -6,7 +6,7 @@ import 'package:attandance_client/model/attLog.dart';
 import 'package:attandance_client/model/employee.dart';
 import 'package:attandance_client/functions/myFunctions.dart';
 import 'package:attandance_client/ui/myWidget.dart';
-import 'package:excel/excel.dart' hide Border;
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xl;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:intl/intl.dart';
@@ -722,24 +722,25 @@ class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
     final overlay = context.loaderOverlay;
     overlay.show();
     try {
-      final excel = Excel.createExcel();
-      final sheet = excel['Absent'];
-      excel.delete('Sheet1');
-      final headers = ['No', 'Emp ID', 'Att ID', 'Name', 'Group'];
-      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
-      MyFunctions.styleHeader(sheet, headers.length);
+      const headers = ['No', 'Emp ID', 'Att ID', 'Name', 'Group'];
+      final workbook = xl.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Absent';
+      for (int c = 0; c < headers.length; c++) {
+        sheet.getRangeByIndex(1, c + 1).setText(headers[c]);
+      }
       for (var i = 0; i < absent.length; i++) {
         final e = absent[i];
-        sheet.appendRow([
-          IntCellValue(i + 1),
-          TextCellValue(e.empId ?? ''),
-          IntCellValue(e.attFingerId ?? 0),
-          TextCellValue(e.name ?? ''),
-          TextCellValue(e.group ?? ''),
-        ]);
+        final row = i + 2;
+        sheet.getRangeByIndex(row, 1).setNumber((i + 1).toDouble());
+        sheet.getRangeByIndex(row, 2).setText(e.empId ?? '');
+        sheet.getRangeByIndex(row, 3).setNumber((e.attFingerId ?? 0).toDouble());
+        sheet.getRangeByIndex(row, 4).setText(e.name ?? '');
+        sheet.getRangeByIndex(row, 5).setText(e.group ?? '');
       }
-      await MyFunctions.saveAndOpenExcel(
-        excel,
+      MyFunctions.createTable(sheet, absent.length + 1, headers.length, 'AbsentList');
+      await MyFunctions.saveAndOpenWorkbook(
+        workbook,
         MyFunctions.exportFileName('AbsentList'),
       );
     } catch (e) {
@@ -950,27 +951,28 @@ class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
     final overlay = context.loaderOverlay;
     overlay.show();
     try {
-      final excel = Excel.createExcel();
-      final sheet = excel['MissingCheckin'];
-      excel.delete('Sheet1');
-      final headers = ['No', 'Date', 'Emp ID', 'Name', 'Group', 'Checkins'];
-      sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
-      MyFunctions.styleHeader(sheet, headers.length);
+      const headers = ['No', 'Date', 'Emp ID', 'Name', 'Group', 'Checkins'];
+      final workbook = xl.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'MissingCheckin';
+      for (int c = 0; c < headers.length; c++) {
+        sheet.getRangeByIndex(1, c + 1).setText(headers[c]);
+      }
       for (var i = 0; i < rows.length; i++) {
         final r = rows[i];
-        sheet.appendRow([
-          IntCellValue(i + 1),
-          TextCellValue(DateFormat('dd/MM/yyyy').format(r.date)),
-          TextCellValue(r.empId),
-          TextCellValue(r.name),
-          TextCellValue(r.group),
-          TextCellValue(
-            r.checkins.map((t) => DateFormat('HH:mm').format(t)).join(', '),
-          ),
-        ]);
+        final row = i + 2;
+        sheet.getRangeByIndex(row, 1).setNumber((i + 1).toDouble());
+        sheet.getRangeByIndex(row, 2).setText(DateFormat('dd/MM/yyyy').format(r.date));
+        sheet.getRangeByIndex(row, 3).setText(r.empId);
+        sheet.getRangeByIndex(row, 4).setText(r.name);
+        sheet.getRangeByIndex(row, 5).setText(r.group);
+        sheet.getRangeByIndex(row, 6).setText(
+          r.checkins.map((t) => DateFormat('HH:mm').format(t)).join(', '),
+        );
       }
-      await MyFunctions.saveAndOpenExcel(
-        excel,
+      MyFunctions.createTable(sheet, rows.length + 1, headers.length, 'MissingCheckin');
+      await MyFunctions.saveAndOpenWorkbook(
+        workbook,
         MyFunctions.exportFileName('MissingCheckin'),
       );
     } catch (e) {
@@ -1769,7 +1771,7 @@ class AttLogDataSource extends DataGridSource {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Text(
             cell.value is DateTime
-                ? DateFormat('yyyy-MM-dd HH:mm:ss').format(cell.value as DateTime)
+                ? DateFormat('dd/MM/yyyy HH:mm:ss').format(cell.value as DateTime)
                 : cell.value.toString(),
           ),
         );

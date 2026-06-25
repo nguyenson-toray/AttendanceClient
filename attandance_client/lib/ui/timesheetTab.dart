@@ -147,6 +147,7 @@ class _TimesheetTabState extends State<TimesheetTab>
       await TimesheetFunctions.exportTimesheets(
         _tsResult!,
         employees: App.gValue.employees,
+        dateRange: App.gValue.dateRangeTimesheet,
       );
     } finally {
       if (mounted) overlay.hide();
@@ -739,7 +740,7 @@ class _SummaryRow {
 
 class TimesheetDataSource extends DataGridSource {
   TimesheetDataSource(List<TimeSheetDate> data) {
-    final dateFmt = DateFormat('yyyy-MM-dd');
+    final dateFmt = DateFormat('dd/MM/yyyy');
     final timeFmt = DateFormat('HH:mm:ss');
     _rows = data.map<DataGridRow>((ts) {
       return DataGridRow(

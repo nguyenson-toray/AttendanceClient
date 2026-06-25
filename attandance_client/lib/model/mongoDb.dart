@@ -60,29 +60,47 @@ class MongoDb {
     return [];
   }
 
+  /// Check permission for [pcName] using per-PC documents.
+  /// DB field `permission`: "write" → "edit", "read" → "read", missing → "deny".
   Future<String> checkPermission(String pcName) async {
     if (kDebugMode) return 'edit';
-    var allowEdit = <dynamic>[], allowRead = <dynamic>[];
-
     try {
       if (!db.isConnected) {
-        logger.t('DB not connected, try connect again');
+        logger.t('checkPermission - DB not connected, try connect again');
         await initDB();
       }
-      final doc = await colListPc.findOne();
+      final doc = await colListPc.findOne(where.eq('pcName', pcName));
       if (doc != null) {
-        allowEdit = _toList(doc['allowEdit']);
-        allowRead = _toList(doc['allowRead']);
+        final perm = doc['permission'] as String? ?? '';
+        if (perm == 'write') return 'edit';
+        if (perm == 'read') return 'read';
       }
     } catch (e) {
-      logger.t(e);
+      logger.t('checkPermission: $e');
     }
-    if (allowEdit.contains(pcName)) {
-      return 'edit';
-    } else if (allowRead.contains(pcName)) {
-      return 'read';
-    } else {
-      return 'deny';
+    return 'deny';
+  }
+
+  /// Update lastLogin for [pcName].
+  /// Permission is managed by admin in DB — never overwritten here.
+  /// If [pcName] is not in DB, creates a new document with permission = 'not set'.
+  Future<void> saveLastLogin(String pcName) async {
+    try {
+      if (!db.isConnected) await initDB();
+      await colListPc.updateOne(
+        where.eq('pcName', pcName),
+        {
+          r'$set': {
+            'pcName': pcName,
+            'lastLogin': DateTime.now().toUtcKeepValue(),
+          },
+          r'$setOnInsert': {'permission': 'not set'},
+        },
+        upsert: true,
+      );
+      logger.t('saveLastLogin: $pcName');
+    } catch (e) {
+      logger.t('saveLastLogin: $e');
     }
   }
 

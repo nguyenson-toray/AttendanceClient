@@ -47,7 +47,7 @@ class _EmployeeTabState extends State<EmployeeTab>
   }
 
   static final DateTime _nullDate = DateTime.utc(2099, 12, 31);
-  static final DateFormat _fmt = DateFormat('dd-MM-yyyy');
+  static final DateFormat _fmt = DateFormat('dd/MM/yyyy');
 
   Employee _findEmployee(String empId) {
     return App.gValue.employees.firstWhere(
