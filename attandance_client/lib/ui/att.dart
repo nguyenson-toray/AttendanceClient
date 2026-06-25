@@ -135,10 +135,14 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
 
   Future<void> _handleDuplicateButton() async {
     if (!_isDupChecked) {
-      // Step 1: Check duplicates — filter and show on grid
+      // Step 1: Check duplicates — allowed for all (read + edit)
       await _checkOtDuplicates();
     } else {
-      // Step 2: Remove duplicates
+      // Step 2: Remove duplicates — edit only
+      if (App.gValue.permission != 'edit') {
+        showToast('Read-only: cannot remove duplicates');
+        return;
+      }
       await _removeOtDuplicates();
     }
   }
@@ -207,7 +211,7 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_selectedIndex == 2)
+          if (_selectedIndex == 2 && App.gValue.permission != 'deny')
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: FloatingActionButton(
