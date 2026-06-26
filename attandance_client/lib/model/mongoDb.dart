@@ -63,7 +63,7 @@ class MongoDb {
   /// Check permission for [pcName] using per-PC documents.
   /// DB field `permission`: "write" → "edit", "read" → "read", missing → "deny".
   Future<String> checkPermission(String pcName) async {
-    if (kDebugMode) return 'edit';
+    if (kDebugMode || ipServer == 'localhost') return 'edit';
     try {
       if (!db.isConnected) {
         logger.t('checkPermission - DB not connected, try connect again');

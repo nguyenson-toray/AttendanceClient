@@ -128,6 +128,16 @@ class OvertimeTabState extends State<OvertimeTab>
     super.dispose();
   }
 
+  /// Returns error message if time inputs are invalid, null if valid.
+  /// Accepts HH:mm format, 00:00–23:59, and begin must be before end.
+  static String? _validateTimes(String begin, String end) {
+    final re = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$');
+    if (!re.hasMatch(begin)) return 'Begin time không đúng định dạng HH:mm (vd: 17:00)';
+    if (!re.hasMatch(end)) return 'End time không đúng định dạng HH:mm (vd: 19:00)';
+    if (begin.compareTo(end) >= 0) return 'Begin phải trước End';
+    return null;
+  }
+
   void refreshData() {
     setState(() {
       _isFilteringOverlaps = false;
@@ -313,6 +323,11 @@ class OvertimeTabState extends State<OvertimeTab>
               onPressed: (_selectedEmpIds.isEmpty || _otSelectedDates.isEmpty)
                   ? null
                   : () async {
+                      final err = _validateTimes(
+                        _otTimeBeginController.text.trim(),
+                        _otTimeEndController.text.trim(),
+                      );
+                      if (err != null) { showToast(err); return; }
                       Navigator.pop(ctx);
                       await _saveOtRegisters(context);
                     },
@@ -532,11 +547,13 @@ class OvertimeTabState extends State<OvertimeTab>
                 foregroundColor: AppColors.onPrimary,
               ),
               onPressed: () async {
+                final newBegin = beginCtrl.text.trim();
+                final newEnd = endCtrl.text.trim();
+                final err = _validateTimes(newBegin, newEnd);
+                if (err != null) { showToast(err); return; }
                 Navigator.pop(ctx);
                 final overlay = context.loaderOverlay;
                 overlay.show();
-                final newBegin = beginCtrl.text.trim();
-                final newEnd = endCtrl.text.trim();
                 await App.mongoDb.updateOtRegister(
                   recordId,
                   editOtDate,
@@ -1253,10 +1270,29 @@ class OvertimeTabState extends State<OvertimeTab>
                                     await MyFunctions.importOtRegisters();
                                 if (ots == null || ots.isEmpty) return;
                                 if (!mounted) return;
+                                // Validate time format HH:mm
+                                final validOts = <OtRegister>[];
+                                final invalidOts = <OtRegister>[];
+                                for (final ot in ots) {
+                                  final err = _validateTimes(ot.otTimeBegin, ot.otTimeEnd);
+                                  if (err != null) {
+                                    invalidOts.add(ot);
+                                  } else {
+                                    validOts.add(ot);
+                                  }
+                                }
+                                if (invalidOts.isNotEmpty) {
+                                  showToast(
+                                    '${invalidOts.length} record(s) bị bỏ qua do sai định dạng giờ (HH:mm): '
+                                    '${invalidOts.map((e) => '${e.empId} ${e.otTimeBegin}-${e.otTimeEnd}').join(', ')}',
+                                    duration: const Duration(seconds: 5),
+                                  );
+                                }
+                                if (validOts.isEmpty) return;
                                 // Split into pass / fail by overlap check
                                 final passed = <OtRegister>[];
                                 final failed = <OtRegister>[];
-                                for (final ot in ots) {
+                                for (final ot in validOts) {
                                   final found = _findOtOverlaps(
                                     [ot.empId],
                                     [ot.otDate],
