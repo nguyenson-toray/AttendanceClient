@@ -699,13 +699,11 @@ class TimesheetFunctions {
       if (earliestBegin != null && latestEnd != null) {
         final double otApproved =
             latestEnd.difference(earliestBegin).inMinutes / 60;
-        // Actual = time employee stayed after shift end, capped to endOT
-        double rawActual = 0;
-        if (lo.isAfter(shiftEnd)) {
-          final effectiveEnd = lo.isBefore(latestEnd) ? lo : latestEnd;
-          rawActual = (effectiveEnd.difference(shiftEnd).inMinutes / 60.0)
-              .clamp(0.0, double.infinity);
-        }
+        // Actual = real time worked after shift end (lo - shiftEnd), NOT capped by OT register.
+        // OT Final handles the cap via clamp(0, otApproved).
+        final double rawActual = lo.isAfter(shiftEnd)
+            ? (lo.difference(shiftEnd).inMinutes / 60.0).clamp(0.0, double.infinity)
+            : 0.0;
         final otActual = _floorToBlock(rawActual);
         final double otFinal = otActual.clamp(0.0, otApproved);
 
@@ -1027,14 +1025,19 @@ class TimesheetFunctions {
         final sortedDateKeys = pivotDates.keys.toList()..sort();
         final dateFmt = DateFormat('dd/MM');
         final shiftSheet = workbook.worksheets.addWithName('Shift');
-        final shiftLastCol = 2 + sortedDateKeys.length;
+        // Fixed cols: EmpID(1), FullName(2), Group(3), JoiningDate(4), ResignDate(5)
+        const fixedCols = 5;
+        final shiftLastCol = fixedCols + sortedDateKeys.length;
 
         // Header row
         shiftSheet.getRangeByIndex(1, 1).setText('Employee ID');
         shiftSheet.getRangeByIndex(1, 2).setText('Full Name');
+        shiftSheet.getRangeByIndex(1, 3).setText('Group');
+        shiftSheet.getRangeByIndex(1, 4).setText('Joining Date');
+        shiftSheet.getRangeByIndex(1, 5).setText('Resign Date');
         for (int ci = 0; ci < sortedDateKeys.length; ci++) {
           shiftSheet
-              .getRangeByIndex(1, ci + 3)
+              .getRangeByIndex(1, ci + fixedCols + 1)
               .setText(dateFmt.format(pivotDates[sortedDateKeys[ci]]!));
         }
         final shiftHdr = shiftSheet.getRangeByIndex(1, 1, 1, shiftLastCol);
@@ -1046,36 +1049,41 @@ class TimesheetFunctions {
         const shift1Hex = '#bfd4ed';
         const shift2Hex = '#beedc8';
 
+        void setBorder(xl.Range cell) =>
+            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+
         int shiftRow = 2;
         for (final empId in pivotEmpOrder) {
           final empObj = empLookup[empId];
           final shiftMap = pivotData[empId]!;
 
-          shiftSheet.getRangeByIndex(shiftRow, 1).setText(empId);
-          shiftSheet.getRangeByIndex(shiftRow, 1).cellStyle.hAlign =
-              xl.HAlignType.center;
-          shiftSheet
-                  .getRangeByIndex(shiftRow, 1)
-                  .cellStyle
-                  .borders
-                  .all
-                  .lineStyle =
-              xl.LineStyle.thin;
-          shiftSheet.getRangeByIndex(shiftRow, 2).setText(empObj?.name ?? '');
-          shiftSheet
-                  .getRangeByIndex(shiftRow, 2)
-                  .cellStyle
-                  .borders
-                  .all
-                  .lineStyle =
-              xl.LineStyle.thin;
+          final c1 = shiftSheet.getRangeByIndex(shiftRow, 1);
+          c1.setText(empId);
+          c1.cellStyle.hAlign = xl.HAlignType.center;
+          setBorder(c1);
+
+          final c2 = shiftSheet.getRangeByIndex(shiftRow, 2);
+          c2.setText(empObj?.name ?? '');
+          setBorder(c2);
+
+          final c3 = shiftSheet.getRangeByIndex(shiftRow, 3);
+          c3.setText(empObj?.group ?? '');
+          setBorder(c3);
+
+          final c4 = shiftSheet.getRangeByIndex(shiftRow, 4);
+          _setDate(c4, _joiningDate(empObj));
+          setBorder(c4);
+
+          final c5 = shiftSheet.getRangeByIndex(shiftRow, 5);
+          _setDate(c5, _resignDate(empObj));
+          setBorder(c5);
 
           for (int ci = 0; ci < sortedDateKeys.length; ci++) {
             final shiftVal = shiftMap[sortedDateKeys[ci]] ?? '';
-            final cell = shiftSheet.getRangeByIndex(shiftRow, ci + 3);
+            final cell = shiftSheet.getRangeByIndex(shiftRow, ci + fixedCols + 1);
             cell.setText(shiftVal);
             cell.cellStyle.hAlign = xl.HAlignType.center;
-            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+            setBorder(cell);
             if (shiftVal == 'Shift 1') cell.cellStyle.backColor = shift1Hex;
             if (shiftVal == 'Shift 2') cell.cellStyle.backColor = shift2Hex;
           }
@@ -1084,7 +1092,10 @@ class TimesheetFunctions {
 
         shiftSheet.getRangeByIndex(1, 1).columnWidth = 14;
         shiftSheet.getRangeByIndex(1, 2).columnWidth = 22;
-        for (int ci = 3; ci <= shiftLastCol; ci++) {
+        shiftSheet.getRangeByIndex(1, 3).columnWidth = 12;
+        shiftSheet.getRangeByIndex(1, 4).columnWidth = 12;
+        shiftSheet.getRangeByIndex(1, 5).columnWidth = 12;
+        for (int ci = fixedCols + 1; ci <= shiftLastCol; ci++) {
           shiftSheet.getRangeByIndex(1, ci).columnWidth = 10;
         }
       }
