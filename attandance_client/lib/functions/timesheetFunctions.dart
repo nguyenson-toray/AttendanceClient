@@ -702,7 +702,10 @@ class TimesheetFunctions {
         // Actual = real time worked after shift end (lo - shiftEnd), NOT capped by OT register.
         // OT Final handles the cap via clamp(0, otApproved).
         final double rawActual = lo.isAfter(shiftEnd)
-            ? (lo.difference(shiftEnd).inMinutes / 60.0).clamp(0.0, double.infinity)
+            ? (lo.difference(shiftEnd).inMinutes / 60.0).clamp(
+                0.0,
+                double.infinity,
+              )
             : 0.0;
         final otActual = _floorToBlock(rawActual);
         final double otFinal = otActual.clamp(0.0, otApproved);
@@ -782,7 +785,7 @@ class TimesheetFunctions {
       void _setTime(xl.Range cell, DateTime? t) {
         if (t == null) return;
         cell.setDateTime(t);
-        cell.numberFormat = 'HH:mm:ss';
+        cell.numberFormat = 'HH:mm';
       }
 
       void _setNum(xl.Range cell, double v) {
@@ -1080,7 +1083,10 @@ class TimesheetFunctions {
 
           for (int ci = 0; ci < sortedDateKeys.length; ci++) {
             final shiftVal = shiftMap[sortedDateKeys[ci]] ?? '';
-            final cell = shiftSheet.getRangeByIndex(shiftRow, ci + fixedCols + 1);
+            final cell = shiftSheet.getRangeByIndex(
+              shiftRow,
+              ci + fixedCols + 1,
+            );
             cell.setText(shiftVal);
             cell.cellStyle.hAlign = xl.HAlignType.center;
             setBorder(cell);
