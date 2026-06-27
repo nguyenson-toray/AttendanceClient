@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:attandance_client/functions/myFunctions.dart';
 import 'package:attandance_client/model/attLog.dart';
 import 'package:attandance_client/model/employee.dart';
@@ -516,7 +518,16 @@ class TimesheetFunctions {
             }
           }
         }
-
+        if (date.isBefore(DateTime(2026, 6, 26))) {
+          // Round down to 1 decimal place for legacy behavior before 26 June 2026 : copy từ version cũ
+          otActual = _roundDownDouble(otActual, 1);
+          otApproved = _roundDownDouble(otApproved, 1);
+          otFinal = _roundDownDouble(otFinal, 1);
+        } else {
+          otActual = _r1(otActual);
+          otApproved = _r1(otApproved);
+          otFinal = _r1(otFinal);
+        }
         result.add(
           TimeSheetDate(
             date: date,
@@ -529,7 +540,8 @@ class TimesheetFunctions {
             shift: shift,
             firstIn: firstIn,
             lastOut: lastOut,
-            normalHours: normalHrs,
+            normalHours: _r2(normalHrs),
+            normalDays: _r2(normalHrs / 8),
             otHours: otActual,
             otHoursApproved: otApproved,
             otHoursFinal: otFinal,
@@ -726,7 +738,16 @@ class TimesheetFunctions {
 
   // ── Excel export ─────────────────────────────────────────────────────────────
 
+  /// Round to 1 decimal, half-up (OT values: 1.25 → 1.3)
+  static double _r1(double v) => double.parse(v.toStringAsFixed(1));
+
+  /// Round to 2 decimals, half-up (normal hours: 1.235 → 1.24)
   static double _r2(double v) => double.parse(v.toStringAsFixed(2));
+  static double _roundDownDouble(double value, int places) {
+    num mod = pow(10.0, places);
+    // Thay .round() bằng .floor()
+    return ((value * mod).floor().toDouble() / mod);
+  }
 
   // Create an xl.Table with Medium2 style
   static void _xlsTable(
@@ -791,6 +812,11 @@ class TimesheetFunctions {
       void _setNum(xl.Range cell, double v) {
         cell.setNumber(_r2(v));
         cell.numberFormat = '0.00';
+      }
+
+      void setOtNum(xl.Range cell, double v) {
+        cell.setNumber(_r1(v));
+        cell.numberFormat = '0.0';
       }
 
       // ── Sheet 0: Important Note ─────────────────────────────────────────────
@@ -881,10 +907,10 @@ class TimesheetFunctions {
         _setTime(detail.getRangeByIndex(row, 10), ts.firstIn);
         _setTime(detail.getRangeByIndex(row, 11), ts.lastOut);
         _setNum(detail.getRangeByIndex(row, 12), ts.normalHours);
-        _setNum(detail.getRangeByIndex(row, 13), ts.normalHours / 8);
-        _setNum(detail.getRangeByIndex(row, 14), ts.otHours);
-        _setNum(detail.getRangeByIndex(row, 15), ts.otHoursApproved);
-        _setNum(detail.getRangeByIndex(row, 16), ts.otHoursFinal);
+        _setNum(detail.getRangeByIndex(row, 13), ts.normalDays);
+        setOtNum(detail.getRangeByIndex(row, 14), ts.otHours);
+        setOtNum(detail.getRangeByIndex(row, 15), ts.otHoursApproved);
+        setOtNum(detail.getRangeByIndex(row, 16), ts.otHoursFinal);
         detail.getRangeByIndex(row, 17).setText(ts.attNote2);
         detail.getRangeByIndex(row, 18).setText(ts.attNote3);
         _setDate(detail.getRangeByIndex(row, 19), _joiningDate(emp));
@@ -938,7 +964,7 @@ class TimesheetFunctions {
         }
         final s = totals[ts.empId]!;
         s.totalNormalHours += ts.normalHours;
-        s.totalWorkingDays += ts.normalHours / 8;
+        s.totalWorkingDays += ts.normalDays;
         s.totalOtActual += ts.otHours;
         s.totalOtApproved += ts.otHoursApproved;
         s.totalOtFinal += ts.otHoursFinal;
@@ -977,9 +1003,9 @@ class TimesheetFunctions {
         summary.getRangeByIndex(row, 6).setText(s.group);
         _setNum(summary.getRangeByIndex(row, 7), s.totalNormalHours);
         _setNum(summary.getRangeByIndex(row, 8), s.totalWorkingDays);
-        _setNum(summary.getRangeByIndex(row, 9), s.totalOtActual);
-        _setNum(summary.getRangeByIndex(row, 10), s.totalOtApproved);
-        _setNum(summary.getRangeByIndex(row, 11), s.totalOtFinal);
+        setOtNum(summary.getRangeByIndex(row, 9), s.totalOtActual);
+        setOtNum(summary.getRangeByIndex(row, 10), s.totalOtApproved);
+        setOtNum(summary.getRangeByIndex(row, 11), s.totalOtFinal);
         _setDate(summary.getRangeByIndex(row, 12), _joiningDate(emp));
         _setDate(summary.getRangeByIndex(row, 13), _resignDate(emp));
         sumNo++;

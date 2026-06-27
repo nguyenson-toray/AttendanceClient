@@ -1,7 +1,7 @@
 # Timesheet Algorithm — `timesheetFunctions.dart`
 
 > Tài liệu này mô tả toàn bộ thuật toán tính timesheet theo code hiện tại.  
-> Cập nhật: 2026-06-24
+> Cập nhật: 2026-06-27
 
 ---
 
@@ -32,10 +32,11 @@ Hàm chính: `TimesheetFunctions.createTimesheets()`
 | `department`, `section`, `group` | `String` | Phân bổ tổ chức |
 | `shift` | `String` | Ca làm việc |
 | `firstIn`, `lastOut` | `DateTime?` | Giờ vào / ra |
-| `normalHours` | `double` | Giờ làm bình thường |
-| `otHours` | `double` | OT thực tế |
-| `otHoursApproved` | `double` | OT được duyệt |
-| `otHoursFinal` | `double` | OT cuối = min(otActual, otApproved) |
+| `normalHours` | `double` | Giờ làm bình thường (đã làm tròn 2 chữ số) |
+| `normalDays` | `double` | Số công = normalHours / 8 (đã làm tròn 2 chữ số) |
+| `otHours` | `double` | OT thực tế (đã làm tròn 1 chữ số) |
+| `otHoursApproved` | `double` | OT được duyệt (đã làm tròn 1 chữ số) |
+| `otHoursFinal` | `double` | OT cuối = min(otActual, otApproved) (đã làm tròn 1 chữ số) |
 | `attNote2` | `String` | Ghi chú chấm công, cảnh báo, chế độ |
 | `attNote3` | `String` | Ghi chú Chủ nhật |
 
@@ -293,11 +294,14 @@ otFinal       = clamp(otActual, 0, otApproved)
 earliestBegin = min(beginOT) của các records sau ca
 latestEnd     = max(endOT) của các records sau ca
 otApproved    = latestEnd − earliestBegin
-effectiveEnd  = min(lastOut, latestEnd)
-rawActual     = if lastOut > shiftEnd → effectiveEnd − shiftEnd   else 0
+rawActual     = if lastOut > shiftEnd → lastOut − shiftEnd   else 0   ← không cap bởi latestEnd
 otActual      = _floorToBlock(rawActual)
 otFinal       = clamp(otActual, 0, otApproved)
 ```
+
+> **Lý do:** `otActual` phản ánh thời gian thực NV ở lại sau ca, không bị giới hạn bởi giờ kết thúc OT register.  
+> `otFinal` mới chịu trách nhiệm cap theo `otApproved`.  
+> Ví dụ: OT register 17:00–19:00, lastOut = 20:03 → `otActual = 3.0h`, `otApproved = 2.0h`, `otFinal = 2.0h`.
 
 ### 7.6 Chủ nhật full-day (trong `_calcOtRecords`)
 
@@ -407,22 +411,47 @@ Nhiều ghi chú trong cùng 1 field ngăn cách bằng ` ; `.
 ## 11. Cột Working Day
 
 ```
-workingDay = normalHours / 8
+normalDays = _r2(normalHours / 8)   ← tính & làm tròn ngay tại result.add()
 ```
 
 - Nhân viên đủ công (8h) → 1.0 công
 - Nhân viên mang thai/con nhỏ về đúng `reducedShiftEnd` → normalHours = 8h → 1.0 công
-- Tổng Working Day trong Summary = `Σ(normalHours / 8)`
+- Tổng Working Day trong Summary = `Σ(ts.normalDays)` — cộng giá trị đã làm tròn, **không** tính lại `Σ(hours) / 8` (tránh lệch do thứ tự phép tính)
 
 ---
 
 ## 12. Làm tròn số
 
-| Ngữ cảnh | Quy tắc |
+### Bước 1 — Floor theo block (trong tính toán)
+
+| Áp dụng cho | Hàm | Quy tắc |
+|---|---|---|
+| OT hours | `_floorToBlock(hours)` | Floor xuống `otBlockMinute`; bỏ qua nếu < `minOtMinute` |
+| Giờ làm bình thường | `_floorWorkingToBlock(hours)` | Floor xuống `workingBlockMinute` (default 1 = không làm tròn) |
+
+### Bước 2 — Làm tròn thập phân (tại `result.add`)
+
+Áp dụng **ngay khi tạo `TimeSheetDate`**, trước khi lưu vào danh sách kết quả:
+
+| Field | Hàm | Ví dụ |
+|---|---|---|
+| `normalHours` | `_r2(v)` — 2 chữ số, half-up | 1.235 → 1.24 |
+| `normalDays` | `_r2(normalHours / 8)` | tính & làm tròn cùng lúc |
+| `otHours` | `_r1(v)` — 1 chữ số, half-up | 1.25 → 1.3 |
+| `otHoursApproved` | `_r1(v)` | |
+| `otHoursFinal` | `_r1(v)` | |
+
+```dart
+_r1(v) = double.parse(v.toStringAsFixed(1))   // half-up, 1 decimal
+_r2(v) = double.parse(v.toStringAsFixed(2))   // half-up, 2 decimals
+```
+
+### Bước 3 — Format Excel
+
+| Cột Excel | numberFormat |
 |---|---|
-| OT | `_floorToBlock()` — floor xuống `otBlockMinute`, bỏ qua nếu < `minOtMinute` |
-| Giờ làm bình thường | `_floorWorkingToBlock()` — floor xuống `workingBlockMinute` (default 1 = không làm tròn) |
-| Xuất Excel | Làm tròn 2 chữ số thập phân: `_d(v) = DoubleCellValue(v.toStringAsFixed(2))` |
+| Working (hour), Working (day) | `0.00` |
+| OT Actual, OT Approved, OT Final | `0.0` |
 
 ---
 

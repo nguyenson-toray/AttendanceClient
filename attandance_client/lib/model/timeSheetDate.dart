@@ -12,6 +12,7 @@ class TimeSheetDate {
   DateTime? firstIn;
   DateTime? lastOut;
   double normalHours;
+  double normalDays;
   double otHours;
   double otHoursApproved;
   double otHoursFinal;
@@ -29,6 +30,7 @@ class TimeSheetDate {
     this.firstIn,
     this.lastOut,
     required this.normalHours,
+    required this.normalDays,
     required this.otHours,
     required this.otHoursApproved,
     required this.otHoursFinal,

@@ -179,7 +179,10 @@ class MyFunctions {
   }
 
   /// Save workbook bytes to file, show toast, and open the file.
-  static Future<void> saveAndOpenWorkbook(xl.Workbook workbook, String fileName) async {
+  static Future<void> saveAndOpenWorkbook(
+    xl.Workbook workbook,
+    String fileName,
+  ) async {
     await Future.delayed(const Duration(milliseconds: 50));
     final bytes = Uint8List.fromList(workbook.saveAsStream());
     workbook.dispose();
@@ -195,9 +198,19 @@ class MyFunctions {
 
   // Set a cell value using the appropriate xlsio method
   static void _setCellValue(xl.Range range, dynamic v) {
-    if (v == null) { range.setText(''); return; }
-    if (v is int) { range.setNumber(v.toDouble()); return; }
-    if (v is double) { range.setNumber(v); range.numberFormat = '0.00'; return; }
+    if (v == null) {
+      range.setText('');
+      return;
+    }
+    if (v is int) {
+      range.setNumber(v.toDouble());
+      return;
+    }
+    if (v is double) {
+      range.setNumber(v);
+      range.numberFormat = '0.00';
+      return;
+    }
     if (v is DateTime) {
       range.setDateTime(v);
       range.numberFormat = 'dd/MM/yyyy';
@@ -225,12 +238,20 @@ class MyFunctions {
       final d = maxData.toDouble();
       final softMin = (hLen * 0.5).clamp(8.0, 15.0);
       final effective = d > softMin ? d : softMin;
-      sheet.getRangeByIndex(1, col).columnWidth = (effective * 1.1 + 2.0).clamp(8.0, 55.0);
+      sheet.getRangeByIndex(1, col).columnWidth = (effective * 1.1 + 2.0).clamp(
+        8.0,
+        55.0,
+      );
     }
   }
 
   // Create an Excel native Table with Medium2 style
-  static void createTable(xl.Worksheet sheet, int lastRow, int lastCol, String name) {
+  static void createTable(
+    xl.Worksheet sheet,
+    int lastRow,
+    int lastCol,
+    String name,
+  ) {
     if (lastRow < 2 || lastCol < 1) return;
     final range = sheet.getRangeByIndex(1, 1, lastRow, lastCol);
     final table = sheet.tableCollection.create(name, range);
@@ -283,7 +304,12 @@ class MyFunctions {
       }
 
       final lastRow = count + 1;
-      createTable(sheet, lastRow < 2 ? 2 : lastRow, headers.length, '${type}_Template');
+      createTable(
+        sheet,
+        lastRow < 2 ? 2 : lastRow,
+        headers.length,
+        '${type}_Template',
+      );
       _applyColumnWidths(sheet, headers, dataForWidth);
 
       await saveAndOpenWorkbook(workbook, exportFileName('${type}_Template'));
@@ -397,9 +423,11 @@ class MyFunctions {
     if (ssEntry != null) {
       final xml = utf8.decode(ssEntry.content as List<int>);
       for (final m in RegExp(r'<si>([\s\S]*?)</si>').allMatches(xml)) {
-        final t = RegExp(
-          r'<t[^>]*>([\s\S]*?)</t>',
-        ).firstMatch(m.group(1)!)?.group(1) ?? '';
+        final t =
+            RegExp(
+              r'<t[^>]*>([\s\S]*?)</t>',
+            ).firstMatch(m.group(1)!)?.group(1) ??
+            '';
         ss.add(_unescXml(t));
       }
     }
@@ -425,8 +453,7 @@ class MyFunctions {
         final inner = cM.group(3)!;
         while (result[rowIdx].length <= colIdx) result[rowIdx].add('');
 
-        final type =
-            RegExp(r'\bt="([^"]*)"').firstMatch(attrs)?.group(1) ?? '';
+        final type = RegExp(r'\bt="([^"]*)"').firstMatch(attrs)?.group(1) ?? '';
         final vText =
             RegExp(r'<v>([\s\S]*?)</v>').firstMatch(inner)?.group(1) ?? '';
 
@@ -504,14 +531,16 @@ class MyFunctions {
         continue;
       }
       final emp = _findEmployee(empId);
-      logs.add(AttLog(
-        objectId: '',
-        attFingerId: fingerId,
-        empId: empId,
-        name: emp.name ?? empId,
-        timestamp: ts,
-        machineNo: machineNo,
-      ));
+      logs.add(
+        AttLog(
+          objectId: '',
+          attFingerId: fingerId,
+          empId: empId,
+          name: emp.name ?? empId,
+          timestamp: ts,
+          machineNo: machineNo,
+        ),
+      );
     }
     if (logs.isEmpty) {
       showToast(
@@ -569,16 +598,18 @@ class MyFunctions {
       }
       final emp = _findEmployee(empId);
       final empSuffix = empId.length > 5 ? empId.substring(5) : empId;
-      ots.add(OtRegister(
-        id: baseId + r,
-        requestNo: '${nowStr}_$empSuffix',
-        requestDate: now,
-        otDate: otDate,
-        otTimeBegin: otTimeBegin,
-        otTimeEnd: otTimeEnd,
-        empId: empId,
-        name: emp.name ?? empId,
-      ));
+      ots.add(
+        OtRegister(
+          id: baseId + r,
+          requestNo: '${nowStr}_$empSuffix',
+          requestDate: now,
+          otDate: otDate,
+          otTimeBegin: otTimeBegin,
+          otTimeEnd: otTimeEnd,
+          empId: empId,
+          name: emp.name ?? empId,
+        ),
+      );
     }
     if (ots.isEmpty) {
       showToast(
@@ -637,14 +668,16 @@ class MyFunctions {
         continue;
       }
       final emp = _findEmployee(empId);
-      srs.add(ShiftRegister(
-        objectId: '',
-        empId: empId,
-        name: emp.name ?? empId,
-        fromDate: fromDate,
-        toDate: toDate,
-        shift: shift,
-      ));
+      srs.add(
+        ShiftRegister(
+          objectId: '',
+          empId: empId,
+          name: emp.name ?? empId,
+          fromDate: fromDate,
+          toDate: toDate,
+          shift: shift,
+        ),
+      );
     }
     if (srs.isEmpty) {
       showToast(

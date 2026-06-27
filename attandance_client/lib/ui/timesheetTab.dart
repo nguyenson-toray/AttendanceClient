@@ -45,7 +45,9 @@ class _TimesheetTabState extends State<TimesheetTab>
   @override
   void initState() {
     super.initState();
-    _minOtCtrl = TextEditingController(text: App.gValue.timesheetSettings.minOtMinute.toString());
+    _minOtCtrl = TextEditingController(
+      text: App.gValue.timesheetSettings.minOtMinute.toString(),
+    );
     _otBlockCtrl = TextEditingController(
       text: App.gValue.timesheetSettings.otBlockMinute.toString(),
     );
@@ -287,20 +289,25 @@ class _TimesheetTabState extends State<TimesheetTab>
                         if (App.gValue.shiftParams.isEmpty)
                           const Text(
                             'No shift records in DB — using defaults',
-                            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textTertiary,
+                            ),
                           )
                         else
-                          ...App.gValue.shiftParams.map((s) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2),
-                                child: Text(
-                                  '${s.name}: ${s.beginHour.toString().padLeft(2, '0')}:${s.beginMin.toString().padLeft(2, '0')}'
-                                  '–${s.endHour.toString().padLeft(2, '0')}:${s.endMin.toString().padLeft(2, '0')}'
-                                  '  rest: ${s.restHour}h'
-                                  '  (${DateFormat('yyyy-MM-dd').format(s.effectiveFrom)}'
-                                  ' → ${DateFormat('yyyy-MM-dd').format(s.effectiveTo)})',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                              )),
+                          ...App.gValue.shiftParams.map(
+                            (s) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '${s.name}: ${s.beginHour.toString().padLeft(2, '0')}:${s.beginMin.toString().padLeft(2, '0')}'
+                                '–${s.endHour.toString().padLeft(2, '0')}:${s.endMin.toString().padLeft(2, '0')}'
+                                '  rest: ${s.restHour}h'
+                                '  (${DateFormat('yyyy-MM-dd').format(s.effectiveFrom)}'
+                                ' → ${DateFormat('yyyy-MM-dd').format(s.effectiveTo)})',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
 
                         const Divider(),
                         // ── Timesheet Settings ──────────────────────────
@@ -331,7 +338,8 @@ class _TimesheetTabState extends State<TimesheetTab>
                           onSubmit: () => _applyInt(
                             _otBlockCtrl,
                             30,
-                            (v) => App.gValue.timesheetSettings.otBlockMinute = v,
+                            (v) =>
+                                App.gValue.timesheetSettings.otBlockMinute = v,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -342,7 +350,12 @@ class _TimesheetTabState extends State<TimesheetTab>
                           onSubmit: () => _applyInt(
                             _workBlockCtrl,
                             1,
-                            (v) => App.gValue.timesheetSettings.workingBlockMinute = v,
+                            (v) =>
+                                App
+                                        .gValue
+                                        .timesheetSettings
+                                        .workingBlockMinute =
+                                    v,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -356,17 +369,27 @@ class _TimesheetTabState extends State<TimesheetTab>
                               ),
                             ),
                             Switch(
-                              value: App.gValue.timesheetSettings.allowOtInRestTime,
+                              value: App
+                                  .gValue
+                                  .timesheetSettings
+                                  .allowOtInRestTime,
                               activeColor: AppColors.primary,
                               onChanged: (v) => setState(() {
-                                App.gValue.timesheetSettings.allowOtInRestTime = v;
+                                App.gValue.timesheetSettings.allowOtInRestTime =
+                                    v;
                               }),
                             ),
                             Text(
-                              App.gValue.timesheetSettings.allowOtInRestTime ? 'Yes' : 'No',
+                              App.gValue.timesheetSettings.allowOtInRestTime
+                                  ? 'Yes'
+                                  : 'No',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: App.gValue.timesheetSettings.allowOtInRestTime
+                                color:
+                                    App
+                                        .gValue
+                                        .timesheetSettings
+                                        .allowOtInRestTime
                                     ? AppColors.primary
                                     : AppColors.textTertiary,
                               ),
@@ -376,7 +399,10 @@ class _TimesheetTabState extends State<TimesheetTab>
                         const SizedBox(height: 8),
                         const Text(
                           'Exclude Employee IDs',
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         TextField(
@@ -384,10 +410,18 @@ class _TimesheetTabState extends State<TimesheetTab>
                           style: const TextStyle(fontSize: 12),
                           decoration: InputDecoration(
                             hintText: 'TIQN-0001, TIQN-0002, ...',
-                            hintStyle: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                            hintStyle: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textTertiary,
+                            ),
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                           ),
                           onSubmitted: (v) {
                             final ids = v
@@ -653,7 +687,7 @@ class TimesheetSummaryDataSource extends DataGridSource {
       }
       final s = totals[ts.empId]!;
       s.totalHours += ts.normalHours;
-      s.totalDays += ts.normalHours / 8;
+      s.totalDays += ts.normalDays;
       s.otActual += ts.otHours;
       s.otApproved += ts.otHoursApproved;
       s.otFinal += ts.otHoursFinal;
@@ -704,7 +738,14 @@ class TimesheetSummaryDataSource extends DataGridSource {
             isNum
                 ? (cell.value as double) == 0
                       ? ''
-                      : (cell.value as double).toStringAsFixed(1)
+                      : (cell.value as double).toStringAsFixed(
+                          const {
+                                'totalHours',
+                                'totalDays',
+                              }.contains(cell.columnName)
+                              ? 2
+                              : 1,
+                        )
                 : cell.value.toString(),
             style: isNum && (cell.value as double) > 0
                 ? TextStyle(
@@ -741,7 +782,7 @@ class _SummaryRow {
 class TimesheetDataSource extends DataGridSource {
   TimesheetDataSource(List<TimeSheetDate> data) {
     final dateFmt = DateFormat('dd/MM/yyyy');
-    final timeFmt = DateFormat('HH:mm:ss');
+    final timeFmt = DateFormat('HH:mm');
     _rows = data.map<DataGridRow>((ts) {
       return DataGridRow(
         cells: [
@@ -765,10 +806,7 @@ class TimesheetDataSource extends DataGridSource {
             columnName: 'normalHours',
             value: ts.normalHours,
           ),
-          DataGridCell<double>(
-            columnName: 'workingDay',
-            value: ts.normalHours / 8,
-          ),
+          DataGridCell<double>(columnName: 'workingDay', value: ts.normalDays),
           DataGridCell<double>(columnName: 'otActual', value: ts.otHours),
           DataGridCell<double>(
             columnName: 'otApproved',
@@ -810,7 +848,14 @@ class TimesheetDataSource extends DataGridSource {
             isNum
                 ? (cell.value as double) == 0
                       ? ''
-                      : (cell.value as double).toStringAsFixed(1)
+                      : (cell.value as double).toStringAsFixed(
+                          const {
+                                'normalHours',
+                                'workingDay',
+                              }.contains(cell.columnName)
+                              ? 2
+                              : 1,
+                        )
                 : cell.value.toString(),
             style: isNum && (cell.value as double) > 0
                 ? TextStyle(
