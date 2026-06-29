@@ -1,7 +1,7 @@
 # Timesheet Algorithm — `timesheetFunctions.dart`
 
 > Tài liệu này mô tả toàn bộ thuật toán tính timesheet theo code hiện tại.  
-> Cập nhật: 2026-06-27
+> Cập nhật: 2026-06-29
 
 ---
 
@@ -248,7 +248,9 @@ normalHours = _floorWorkingToBlock(morning + afternoon)
 
 ## 7. Tính OT
 
-> OT tính đồng nhất cho tất cả ca. Tách riêng trước ca và sau ca, tính independent, sum lại.
+> **Unified OT block**: chạy cho **tất cả** số log chấm công (0 = vắng, 1 = 1 lần, ≥2 = bình thường).  
+> Tách riêng trước ca và sau ca, tính independent, sum lại.  
+> `otFinal` KHÔNG được tính bằng global `clamp(otActual, otApproved)` — thay vào đó mỗi nhánh tự tính đúng.
 
 ### 7.1 Base OT (trước khi tra OT register)
 
@@ -327,14 +329,34 @@ totalFinal    = otFinal_before + otFinal_after
 if otRestHour AND allowOtInRestTime:
     otActual   += restHour
     otApproved += restHour
+    otFinal    += restHour    ← cộng riêng, không tính lại global clamp
     noteCheckin += 'OT giờ nghỉ trưa'
 ```
 
-### 7.9 OT Final (sau tất cả)
+> Rest-hour OT luôn được duyệt 100%. Cộng vào từng biến riêng lẻ để không làm sai otFinal đã tính per-segment ở bước trên.
+
+### 7.9 OT cho trường hợp 0 / 1 log — `_calcOtApproved`
+
+Khi không có `lastOut` (vắng hoặc 1 lần chấm), `otActual = 0`. Nếu nhân viên có đăng ký OT:
 
 ```
-otFinal = clamp(otActual, 0, otApproved)
+otApproved = _calcOtApproved(date, otRecs, shiftBegin, shiftEnd)
+otFinal    = 0    ← không có giờ thực tế
 ```
+
+`_calcOtApproved` phân loại records (trước ca / sau ca / Sunday) theo cùng logic với `_calcOtRecords`, nhưng chỉ tính `otApproved` (không cần `firstIn`/`lastOut`).
+
+### 7.10 Tổng kết otFinal
+
+| Trường hợp | otFinal |
+|---|---|
+| `lastOut != null`, có OT records → `_calcOtRecords` | `Σ(otFinal per segment)` + restHour (nếu có) |
+| `lastOut != null`, OT records rỗng sau filter | `clamp(otActual, 0, 0) = 0` |
+| `lastOut != null`, không có đăng ký OT | `0` (otApproved = 0) |
+| `lastOut == null` (0 hoặc 1 log) | `0` (otActual = 0) |
+
+> **Không có global `clamp(otActual, otApproved)` sau cùng.**  
+> Tổng per-segment finals có thể < `clamp(totalActual, totalApproved)` khi một segment thiếu actual và segment khác thừa — global clamp sẽ trả về kết quả sai cao hơn.
 
 ---
 
@@ -495,10 +517,10 @@ for (date, employee):
 
     isPregnant / isYoungChild → shiftEnd −= 1h
 
-    ┌─ 0 logs ─────────────────────────────────→ record rỗng (zeros)
-    ├─ 1 log ─────────────────────────────────→ 'Chỉ có 1 lần chấm công'
+    ┌─ 0 logs ─────────────────────────────────→ firstIn=null, lastOut=null (zeros)
+    ├─ 1 log ─────────────────────────────────→ firstIn=log[0], lastOut=null; note 'Chỉ có 1 lần chấm công'
     └─ ≥2 logs:
-        fi, lo = min/max(timestamps)
+        fi, lo = min/max(timestamps); firstIn=fi, lastOut=lo
         ┌─ lo ≤ shiftBegin ───────────────────→ 'Không chấm công RA'
         ├─ fi ≥ shiftEnd ────────────────────→ 'Không chấm công VÀO'
         └─ fi ≠ lo:
@@ -507,16 +529,23 @@ for (date, employee):
                           ? _youngChildAfternoon(lo, restEnd, shiftEnd)  ← 8−earlyBy
                           : _normalAfternoon(fi, lo, shiftEnd, restEnd)
             normalHrs = _floorWorkingToBlock(morning + afternoon)
+            ghi chú: Vào trễ / Ra sớm / Vào sớm ≥1h / Ra trễ ≥1h
 
-            baseOtActual = _floorToBlock(max(lo − shiftEnd, 0))
-            ┌─ has OT register:
-            │   dedup (highest id) → filter rest-hour (weekday only)
-            │   _calcOtRecords: trước ca / sau ca / Sunday full-day
-            │   if otRestHour AND allowOtInRest: +restHour
-            └─ no OT register: otApproved = 0
-
-            otFinal = clamp(otActual, 0, otApproved)
-            ghi chú: Vào trễ / Ra sớm / Vào sớm ≥1h / Ra trễ ≥1h (vs shiftEnd điều chỉnh)
+    ── Unified OT block (chạy cho cả 0 / 1 / ≥2 logs) ──────────────────
+    if lastOut != null:
+        otActual = _floorToBlock(max(lastOut − shiftEnd, 0))
+    if empId in OT register:
+        dedup (highest id per uniqueKey)
+        if lastOut != null:
+            filter rest-hour record (weekday only) → otRestHour flag
+            if otRecs not empty:
+                _calcOtRecords → otActual, otApproved, otFinal (per-segment)
+            else:
+                otFinal = 0   ← no records left after filter
+            if otRestHour AND allowOtInRest:
+                otActual += restHour; otApproved += restHour; otFinal += restHour
+        else:
+            otApproved = _calcOtApproved(...)   ← approved only, otFinal stays 0
 
     Sunday block (ghi đè):
         otApproved = shiftEnd−shiftBegin [−1h lunch nếu span qua trưa]  (chỉ nếu có OT reg)

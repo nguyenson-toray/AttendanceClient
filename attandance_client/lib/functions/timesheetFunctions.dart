@@ -337,7 +337,6 @@ class TimesheetFunctions {
             if (isYoungChild || isPregnant) {
               // shiftEnd already reduced by 1h (= reducedShiftEnd)
               // Credit: 4h if arrived at reducedShiftEnd; else 4 - earlyBy
-              // Both regimes: leave 1h early but get full day credit
               afternoon = _youngChildAfternoon(lo, restEnd, shiftEnd);
             } else {
               if (!lo.isBefore(restEnd)) {
@@ -348,85 +347,85 @@ class TimesheetFunctions {
               (morning + afternoon).clamp(0, double.infinity),
             );
 
-            // ── OT ─────────────────────────────────────────────────────
-            bool otRestHour = false;
+            // Late / early leave notes
+            if (fi.isAfter(shiftBegin)) {
+              noteCheckin = _note(noteCheckin, 'Vào trễ');
+            }
+            if (lo.isBefore(shiftEnd)) {
+              noteCheckin = _note(noteCheckin, 'Ra sớm');
+            }
+          }
+        }
 
-            // Base OT = time after shiftEnd (before consulting OT register)
-            otActual = _floorToBlock(
-              (lo.difference(shiftEnd).inMinutes / 60.0).clamp(
-                0.0,
-                double.infinity,
-              ),
-            );
+        // ── Unified OT block (runs for all log counts: 0 / 1 / ≥2) ──────────
+        // Base OT = time after shiftEnd; 0 when no lastOut
+        if (lastOut != null) {
+          otActual = _floorToBlock(
+            (lastOut.difference(shiftEnd).inMinutes / 60.0).clamp(0.0, double.infinity),
+          );
+        }
 
-            if (empIdOT.contains(emp.empId)) {
-              // Deduplicate OT records for this employee
-              var otRecs = (otByEmp[emp.empId] ?? []).toList();
-              if (otRecs.length > 1) {
-                final uniq = <String, OtRegister>{};
-                for (final o in otRecs) {
-                  if (!uniq.containsKey(o.uniqueKeyWithoutId) ||
-                      o.id > uniq[o.uniqueKeyWithoutId]!.id) {
-                    uniq[o.uniqueKeyWithoutId] = o;
-                  }
-                }
-                otRecs = uniq.values.toList();
-              }
-
-              // Check OT record that covers rest hour — filter it out
-              // Skip on Sunday: full-day OT (e.g. 08:00-17:00) spans lunch but is valid; _calcOtRecords deducts 1h internally
-              if (p.restHour > 0 && date.weekday != DateTime.sunday) {
-                int restIdx = -1;
-                for (int i = 0; i < otRecs.length; i++) {
-                  final ob =
-                      int.tryParse(otRecs[i].otTimeBegin.split(':')[0]) ?? 0;
-                  final oe =
-                      int.tryParse(otRecs[i].otTimeEnd.split(':')[0]) ?? 0;
-                  if (ob <= restBegin.hour && oe >= restEnd.hour) {
-                    otRestHour = true;
-                    restIdx = i;
-                    break;
-                  }
-                }
-                if (restIdx >= 0) {
-                  otRecs = [
-                    for (int i = 0; i < otRecs.length; i++)
-                      if (i != restIdx) otRecs[i],
-                  ];
-                }
-              }
-
-              // Calculate OT with before/after separation
-              if (otRecs.isNotEmpty) {
-                final otRes = _calcOtRecords(
-                  date,
-                  otRecs,
-                  fi,
-                  lo,
-                  shiftBegin,
-                  shiftEnd,
-                  otActual,
-                );
-                otActual = otRes.otActual;
-                otApproved = otRes.otApproved;
-                otFinal = otRes.otFinal;
-              }
-
-              if (otRestHour &&
-                  App.gValue.timesheetSettings.allowOtInRestTime) {
-                otActual += p.restHour;
-                otApproved += p.restHour;
-                noteCheckin = _note(noteCheckin, 'OT giờ nghỉ trưa');
+        if (empIdOT.contains(emp.empId)) {
+          // Deduplicate OT records
+          var otRecs = (otByEmp[emp.empId] ?? []).toList();
+          if (otRecs.length > 1) {
+            final uniq = <String, OtRegister>{};
+            for (final o in otRecs) {
+              if (!uniq.containsKey(o.uniqueKeyWithoutId) ||
+                  o.id > uniq[o.uniqueKeyWithoutId]!.id) {
+                uniq[o.uniqueKeyWithoutId] = o;
               }
             }
+            otRecs = uniq.values.toList();
+          }
 
-            otFinal = otActual.clamp(0.0, otApproved);
-
-            // Late / early leave notes
-            if (fi.isAfter(shiftBegin))
-              noteCheckin = _note(noteCheckin, 'Vào trễ');
-            if (lo.isBefore(shiftEnd))
-              noteCheckin = _note(noteCheckin, 'Ra sớm');
+          if (lastOut != null) {
+            // Full path: actual + approved (needs firstIn/lastOut)
+            bool otRestHour = false;
+            // Filter OT record that covers rest hour (weekday only)
+            if (p.restHour > 0 && date.weekday != DateTime.sunday) {
+              int restIdx = -1;
+              for (int i = 0; i < otRecs.length; i++) {
+                final ob = int.tryParse(otRecs[i].otTimeBegin.split(':')[0]) ?? 0;
+                final oe = int.tryParse(otRecs[i].otTimeEnd.split(':')[0]) ?? 0;
+                if (ob <= restBegin.hour && oe >= restEnd.hour) {
+                  otRestHour = true;
+                  restIdx = i;
+                  break;
+                }
+              }
+              if (restIdx >= 0) {
+                otRecs = [
+                  for (int i = 0; i < otRecs.length; i++)
+                    if (i != restIdx) otRecs[i],
+                ];
+              }
+            }
+            if (otRecs.isNotEmpty) {
+              // _calcOtRecords computes otFinal per-segment (clamp before summing).
+              // Do NOT override with a global clamp afterwards — that would be wrong
+              // when one segment is under-actual and another is over-actual.
+              final otRes = _calcOtRecords(
+                date, otRecs, firstIn!, lastOut, shiftBegin, shiftEnd, otActual,
+              );
+              otActual = otRes.otActual;
+              otApproved = otRes.otApproved;
+              otFinal = otRes.otFinal;
+            } else {
+              // No OT records (all filtered or empty): final = 0
+              otFinal = otActual.clamp(0.0, otApproved);
+            }
+            if (otRestHour && App.gValue.timesheetSettings.allowOtInRestTime) {
+              // Rest-hour OT is always fully granted; add to each component separately.
+              otActual += p.restHour;
+              otApproved += p.restHour;
+              otFinal += p.restHour;
+              noteCheckin = _note(noteCheckin, 'OT giờ nghỉ trưa');
+            }
+          } else {
+            // 0 or 1 log: approved only — actual stays 0 (no lastOut)
+            otApproved = _calcOtApproved(date, otRecs, shiftBegin, shiftEnd);
+            // otActual = 0, so otFinal = 0 regardless of otApproved
           }
         }
 
@@ -605,6 +604,46 @@ class TimesheetFunctions {
   }
 
   // ── OT calculation: process all records, split before/after shift ────────────
+
+  /// Calculate only otApproved from OT registers (no fi/lo needed).
+  /// Used when empLogs.length == 1 — actual OT is 0 but approved is still valid.
+  static double _calcOtApproved(
+    DateTime date,
+    List<OtRegister> recs,
+    DateTime shiftBegin,
+    DateTime shiftEnd,
+  ) {
+    double approved = 0;
+    DateTime? beforeEarliestBegin, beforeLatestEnd;
+    DateTime? afterEarliestBegin, afterLatestEnd;
+
+    for (final rec in recs) {
+      final b = _parseShiftTime(date, rec.otTimeBegin);
+      final e = _parseShiftTime(date, rec.otTimeEnd);
+      if (b == null || e == null) continue;
+      final bh = b.hour, eh = e.hour;
+
+      if (date.weekday == DateTime.sunday && bh < 12 && eh > 13) {
+        // Sunday full-day: approved = duration − 1h lunch
+        approved += e.difference(b).inMinutes / 60.0 - 1;
+      } else if (eh <= shiftBegin.hour) {
+        // Before shift
+        if (beforeEarliestBegin == null || b.isBefore(beforeEarliestBegin)) beforeEarliestBegin = b;
+        if (beforeLatestEnd == null || e.isAfter(beforeLatestEnd)) beforeLatestEnd = e;
+      } else if (bh >= shiftEnd.hour) {
+        // After shift
+        if (afterEarliestBegin == null || b.isBefore(afterEarliestBegin)) afterEarliestBegin = b;
+        if (afterLatestEnd == null || e.isAfter(afterLatestEnd)) afterLatestEnd = e;
+      }
+    }
+    if (beforeEarliestBegin != null && beforeLatestEnd != null) {
+      approved += beforeLatestEnd.difference(beforeEarliestBegin).inMinutes / 60.0;
+    }
+    if (afterEarliestBegin != null && afterLatestEnd != null) {
+      approved += afterLatestEnd.difference(afterEarliestBegin).inMinutes / 60.0;
+    }
+    return approved;
+  }
 
   /// Calculate OT from a list of OT records, separating before-shift and
   /// after-shift independently. Each part applies _floorToBlock and _minOtMin.

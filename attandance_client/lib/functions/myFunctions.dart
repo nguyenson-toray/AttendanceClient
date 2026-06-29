@@ -481,6 +481,18 @@ class MyFunctions {
     return r;
   }
 
+  /// Convert Excel time serial (e.g. "0.5" = 12:00) to "HH:mm".
+  /// If the value already contains ":" it is returned as-is.
+  static String _xlTimeToHhmm(String v) {
+    if (v.contains(':')) return v;
+    final d = double.tryParse(v);
+    if (d == null || d < 0 || d >= 1) return v;
+    final totalMin = (d * 24 * 60).round();
+    final h = totalMin ~/ 60;
+    final m = totalMin % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
   static String _unescXml(String s) => s
       .replaceAll('&amp;', '&')
       .replaceAll('&lt;', '<')
@@ -579,8 +591,8 @@ class MyFunctions {
       final row = xlRows[r];
       String at(int c) => c < row.length ? row[c].trim() : '';
       final otDateStr = at(0);
-      final otTimeBegin = at(1);
-      final otTimeEnd = at(2);
+      final otTimeBegin = _xlTimeToHhmm(at(1));
+      final otTimeEnd = _xlTimeToHhmm(at(2));
       final empId = at(3);
       if (empId.isEmpty && otDateStr.isEmpty) continue;
       if (empId.isEmpty) {
