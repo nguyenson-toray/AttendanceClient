@@ -113,7 +113,14 @@ class MongoDb {
       }
       await colEmployee
           .find(where.sortBy('empId', descending: true))
-          .forEach((emp) => {result.add(Employee.fromMap(emp))});
+          .forEach((emp) {
+        final fid = emp['attFingerId'];
+        if (fid != null && fid is! int) {
+          logger.t('getEmployees: skip ${emp['empId']} — attFingerId is ${fid.runtimeType}');
+          return;
+        }
+        result.add(Employee.fromMap(emp));
+      });
       logger.t('getEmployees: ${result.length} employees found');
     } catch (e) {
       logger.t('getEmployees: $e');

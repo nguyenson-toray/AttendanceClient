@@ -1073,7 +1073,115 @@ class TimesheetFunctions {
       summary.getRangeByIndex(1, 1, 1, sumHdrs.length).cellStyle.wrapText =
           true;
 
-      // ── Sheet 3: Shift pivot ─────────────────────────────────────────────────
+      // ── Sheet 3: Timesheet pivot (employee × date → Working day) ───────────
+      {
+        // Build pivot: empId → dateKey → normalDays
+        final tsEmpOrder = <String>[];
+        final tsEmpInfo = <String, TimeSheetDate>{};
+        final tsPivot = <String, Map<String, double>>{};
+        final tsDateMap = <String, DateTime>{};
+
+        for (final ts in data) {
+          final dk = _dayKey(ts.date);
+          tsDateMap[dk] = ts.date;
+          if (!tsPivot.containsKey(ts.empId)) {
+            tsEmpOrder.add(ts.empId);
+            tsEmpInfo[ts.empId] = ts;
+            tsPivot[ts.empId] = {};
+          }
+          tsPivot[ts.empId]![dk] =
+              (tsPivot[ts.empId]![dk] ?? 0) + ts.normalDays;
+        }
+
+        final sortedTsDates = tsDateMap.keys.toList()..sort();
+        const tsFixed = 7; // No, EmpID, FingerID, FullName, Dept, Section, Group
+        final tsLastCol = tsFixed + sortedTsDates.length + 1; // +1 for Total
+        final tsSheet = workbook.worksheets.addWithName('Timesheet');
+        final dateFmtTs = DateFormat('dd/MM');
+
+        // Header row
+        final tsHdrLabels = [
+          'No',
+          'Employee ID',
+          'Finger ID',
+          'Full name',
+          'Department',
+          'Section',
+          'Group',
+        ];
+        for (int c = 0; c < tsHdrLabels.length; c++) {
+          tsSheet.getRangeByIndex(1, c + 1).setText(tsHdrLabels[c]);
+        }
+        for (int ci = 0; ci < sortedTsDates.length; ci++) {
+          tsSheet
+              .getRangeByIndex(1, ci + tsFixed + 1)
+              .setText(dateFmtTs.format(tsDateMap[sortedTsDates[ci]]!));
+        }
+        tsSheet.getRangeByIndex(1, tsLastCol).setText('Total');
+        final tsHdrRange = tsSheet.getRangeByIndex(1, 1, 1, tsLastCol);
+        tsHdrRange.cellStyle.wrapText = true;
+        tsHdrRange.rowHeight = 50;
+
+        // Data rows
+        int tsNo = 1;
+        for (final empId in tsEmpOrder) {
+          final row = tsNo + 1;
+          final info = tsEmpInfo[empId]!;
+          final dayMap = tsPivot[empId]!;
+
+          tsSheet.getRangeByIndex(row, 1).setNumber(tsNo.toDouble());
+          tsSheet.getRangeByIndex(row, 2).setText(info.empId);
+          tsSheet.getRangeByIndex(row, 3).setNumber(info.attFingerId.toDouble());
+          tsSheet.getRangeByIndex(row, 4).setText(info.name);
+          tsSheet.getRangeByIndex(row, 5).setText(info.department);
+          tsSheet.getRangeByIndex(row, 6).setText(info.section);
+          tsSheet.getRangeByIndex(row, 7).setText(info.group);
+
+          double tsTotal = 0;
+          for (int ci = 0; ci < sortedTsDates.length; ci++) {
+            final val = dayMap[sortedTsDates[ci]] ?? 0.0;
+            tsTotal += val;
+            final cell = tsSheet.getRangeByIndex(row, ci + tsFixed + 1);
+            if (val > 0) {
+              cell.setNumber(val);
+              cell.numberFormat =
+                  val == val.truncateToDouble() ? '0' : '0.##';
+            }
+            cell.cellStyle.hAlign = xl.HAlignType.center;
+            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+          }
+          final totalCell = tsSheet.getRangeByIndex(row, tsLastCol);
+          totalCell.setNumber(tsTotal);
+          totalCell.numberFormat = tsTotal == tsTotal.truncateToDouble() ? '0' : '0.##';
+          totalCell.cellStyle.hAlign = xl.HAlignType.center;
+          totalCell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+
+          // Border for fixed cols
+          for (int c = 1; c <= tsFixed; c++) {
+            tsSheet
+                .getRangeByIndex(row, c)
+                .cellStyle
+                .borders
+                .all
+                .lineStyle = xl.LineStyle.thin;
+          }
+          tsNo++;
+        }
+
+        _xlsTable(tsSheet, tsEmpOrder.length + 1, tsLastCol, 'TableTimesheet');
+
+        // Column widths
+        const tsFixedWidths = [4.0, 12.0, 8.0, 24.0, 10.0, 14.0, 18.0];
+        for (int i = 0; i < tsFixedWidths.length; i++) {
+          tsSheet.getRangeByIndex(1, i + 1).columnWidth = tsFixedWidths[i];
+        }
+        for (int ci = tsFixed + 1; ci <= tsLastCol; ci++) {
+          tsSheet.getRangeByIndex(1, ci).columnWidth =
+              ci == tsLastCol ? 8.0 : 6.0;
+        }
+      }
+
+      // ── Sheet 4: Shift pivot ─────────────────────────────────────────────────
       final pivotData = <String, Map<String, String>>{};
       final pivotEmpOrder = <String>[];
       final pivotDates = <String, DateTime>{};
