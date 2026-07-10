@@ -1021,14 +1021,14 @@ class TimesheetFunctions {
       const empFixedHdrs = [
         'No',
         'Employee ID',
+        'Full name',
         'Joining Date',
         'Resign Date',
-        'Full name',
         'Group',
         'Section',
         'Position',
       ];
-      const empFixedWidths = [4.0, 12.0, 10.0, 10.0, 24.0, 18.0, 14.0, 14.0];
+      const empFixedWidths = [4.0, 12.0, 24.0, 10.0, 10.0, 18.0, 14.0, 14.0];
 
       // Write fixed employee columns (1‥8) for a data row and apply border.
       void writeFixed(
@@ -1043,9 +1043,9 @@ class TimesheetFunctions {
       }) {
         s.getRangeByIndex(row, 1).setNumber(no.toDouble());
         s.getRangeByIndex(row, 2).setText(empId);
-        _setDate(s.getRangeByIndex(row, 3), _joiningDate(emp));
-        _setDate(s.getRangeByIndex(row, 4), _resignDate(emp));
-        s.getRangeByIndex(row, 5).setText(emp?.name ?? name);
+        s.getRangeByIndex(row, 3).setText(emp?.name ?? name);
+        _setDate(s.getRangeByIndex(row, 4), _joiningDate(emp));
+        _setDate(s.getRangeByIndex(row, 5), _resignDate(emp));
         s.getRangeByIndex(row, 6).setText(emp?.group ?? group);
         s.getRangeByIndex(row, 7).setText(emp?.section ?? section);
         s.getRangeByIndex(row, 8).setText(emp?.position ?? '');
