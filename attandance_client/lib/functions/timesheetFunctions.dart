@@ -361,7 +361,10 @@ class TimesheetFunctions {
         // Base OT = time after shiftEnd; 0 when no lastOut
         if (lastOut != null) {
           otActual = _floorToBlock(
-            (lastOut.difference(shiftEnd).inMinutes / 60.0).clamp(0.0, double.infinity),
+            (lastOut.difference(shiftEnd).inMinutes / 60.0).clamp(
+              0.0,
+              double.infinity,
+            ),
           );
         }
 
@@ -386,7 +389,8 @@ class TimesheetFunctions {
             if (p.restHour > 0 && date.weekday != DateTime.sunday) {
               int restIdx = -1;
               for (int i = 0; i < otRecs.length; i++) {
-                final ob = int.tryParse(otRecs[i].otTimeBegin.split(':')[0]) ?? 0;
+                final ob =
+                    int.tryParse(otRecs[i].otTimeBegin.split(':')[0]) ?? 0;
                 final oe = int.tryParse(otRecs[i].otTimeEnd.split(':')[0]) ?? 0;
                 if (ob <= restBegin.hour && oe >= restEnd.hour) {
                   otRestHour = true;
@@ -406,7 +410,13 @@ class TimesheetFunctions {
               // Do NOT override with a global clamp afterwards — that would be wrong
               // when one segment is under-actual and another is over-actual.
               final otRes = _calcOtRecords(
-                date, otRecs, firstIn!, lastOut, shiftBegin, shiftEnd, otActual,
+                date,
+                otRecs,
+                firstIn!,
+                lastOut,
+                shiftBegin,
+                shiftEnd,
+                otActual,
               );
               otActual = otRes.otActual;
               otApproved = otRes.otApproved;
@@ -628,19 +638,25 @@ class TimesheetFunctions {
         approved += e.difference(b).inMinutes / 60.0 - 1;
       } else if (eh <= shiftBegin.hour) {
         // Before shift
-        if (beforeEarliestBegin == null || b.isBefore(beforeEarliestBegin)) beforeEarliestBegin = b;
-        if (beforeLatestEnd == null || e.isAfter(beforeLatestEnd)) beforeLatestEnd = e;
+        if (beforeEarliestBegin == null || b.isBefore(beforeEarliestBegin))
+          beforeEarliestBegin = b;
+        if (beforeLatestEnd == null || e.isAfter(beforeLatestEnd))
+          beforeLatestEnd = e;
       } else if (bh >= shiftEnd.hour) {
         // After shift
-        if (afterEarliestBegin == null || b.isBefore(afterEarliestBegin)) afterEarliestBegin = b;
-        if (afterLatestEnd == null || e.isAfter(afterLatestEnd)) afterLatestEnd = e;
+        if (afterEarliestBegin == null || b.isBefore(afterEarliestBegin))
+          afterEarliestBegin = b;
+        if (afterLatestEnd == null || e.isAfter(afterLatestEnd))
+          afterLatestEnd = e;
       }
     }
     if (beforeEarliestBegin != null && beforeLatestEnd != null) {
-      approved += beforeLatestEnd.difference(beforeEarliestBegin).inMinutes / 60.0;
+      approved +=
+          beforeLatestEnd.difference(beforeEarliestBegin).inMinutes / 60.0;
     }
     if (afterEarliestBegin != null && afterLatestEnd != null) {
-      approved += afterLatestEnd.difference(afterEarliestBegin).inMinutes / 60.0;
+      approved +=
+          afterLatestEnd.difference(afterEarliestBegin).inMinutes / 60.0;
     }
     return approved;
   }
@@ -788,20 +804,25 @@ class TimesheetFunctions {
     return ((value * mod).floor().toDouble() / mod);
   }
 
-  // Create an xl.Table with Medium2 style
+  // Create an xl.Table with tableStyleMedium16 style
   static void _xlsTable(
     xl.Worksheet sheet,
     int lastRow,
     int lastCol,
-    String name,
-  ) {
+    String name, {
+    bool clearDataBorders = false,
+  }) {
     if (lastRow < 2 || lastCol < 1) return;
     final range = sheet.getRangeByIndex(1, 1, lastRow, lastCol);
     final table = sheet.tableCollection.create(name, range);
-    table.builtInTableStyle = xl.ExcelTableBuiltInStyle.tableStyleMedium2;
+    table.builtInTableStyle = xl.ExcelTableBuiltInStyle.tableStyleMedium16;
     table.showBandedRows = true;
     table.showFirstColumn = false;
     table.showLastColumn = false;
+    if (clearDataBorders && lastRow > 1) {
+      final dataRange = sheet.getRangeByIndex(2, 1, lastRow, lastCol);
+      dataRange.cellStyle.borders.all.lineStyle = xl.LineStyle.none;
+    }
   }
 
   static Future<void> exportTimesheets(
@@ -930,8 +951,15 @@ class TimesheetFunctions {
         detail.getRangeByIndex(1, c + 1).setText(detailHdrs[c]);
       }
 
+      // Sort Detail: date ASC, then empId ASC
+      final detailData = [...data]
+        ..sort((a, b) {
+          final dc = a.date.compareTo(b.date);
+          return dc != 0 ? dc : a.empId.compareTo(b.empId);
+        });
+
       int detailNo = 1;
-      for (final ts in data) {
+      for (final ts in detailData) {
         final row = detailNo + 1;
         final emp = empLookup[ts.empId];
         detail.getRangeByIndex(row, 1).setNumber(detailNo.toDouble());
@@ -987,20 +1015,81 @@ class TimesheetFunctions {
       detail.getRangeByIndex(1, 1, 1, detailHdrs.length).cellStyle.wrapText =
           true;
 
+      // ── Unified fixed columns for Summary / pivot sheets / Shift ────────────
+      // Order: No, Employee ID, Joining Date, Resign Date, Full name, Group, Section, Position
+      const empFixed = 8;
+      const empFixedHdrs = [
+        'No',
+        'Employee ID',
+        'Joining Date',
+        'Resign Date',
+        'Full name',
+        'Group',
+        'Section',
+        'Position',
+      ];
+      const empFixedWidths = [4.0, 12.0, 10.0, 10.0, 24.0, 18.0, 14.0, 14.0];
+
+      // Write fixed employee columns (1‥8) for a data row and apply border.
+      void writeFixed(
+        xl.Worksheet s,
+        int row,
+        int no,
+        String empId,
+        Employee? emp, {
+        String name = '',
+        String section = '',
+        String group = '',
+      }) {
+        s.getRangeByIndex(row, 1).setNumber(no.toDouble());
+        s.getRangeByIndex(row, 2).setText(empId);
+        _setDate(s.getRangeByIndex(row, 3), _joiningDate(emp));
+        _setDate(s.getRangeByIndex(row, 4), _resignDate(emp));
+        s.getRangeByIndex(row, 5).setText(emp?.name ?? name);
+        s.getRangeByIndex(row, 6).setText(emp?.group ?? group);
+        s.getRangeByIndex(row, 7).setText(emp?.section ?? section);
+        s.getRangeByIndex(row, 8).setText(emp?.position ?? '');
+      }
+
+      // Apply fixed header labels + wrapText/height to a sheet.
+      void writeFixedHeader(
+        xl.Worksheet s,
+        int lastCol,
+        List<String> extraHdrs,
+      ) {
+        for (int c = 0; c < empFixedHdrs.length; c++) {
+          s.getRangeByIndex(1, c + 1).setText(empFixedHdrs[c]);
+        }
+        for (int i = 0; i < extraHdrs.length; i++) {
+          s.getRangeByIndex(1, empFixed + 1 + i).setText(extraHdrs[i]);
+        }
+        final hdr = s.getRangeByIndex(1, 1, 1, lastCol);
+        hdr.cellStyle.wrapText = true;
+        hdr.rowHeight = 50;
+      }
+
+      // Apply fixed column widths + extra widths to a sheet.
+      void applyWidths(xl.Worksheet s, List<double> extraWidths) {
+        for (int i = 0; i < empFixedWidths.length; i++) {
+          s.getRangeByIndex(1, i + 1).columnWidth = empFixedWidths[i];
+        }
+        for (int i = 0; i < extraWidths.length; i++) {
+          s.getRangeByIndex(1, empFixed + 1 + i).columnWidth = extraWidths[i];
+        }
+      }
+
       // ── Sheet 2: Summary ────────────────────────────────────────────────────
-      final empOrder = <String>[];
       final totals = <String, _EmpSummary>{};
       for (final ts in data) {
-        if (!totals.containsKey(ts.empId)) {
-          empOrder.add(ts.empId);
-          totals[ts.empId] = _EmpSummary(
+        totals.putIfAbsent(
+          ts.empId,
+          () => _EmpSummary(
             empId: ts.empId,
             name: ts.name,
-            department: ts.department,
             section: ts.section,
             group: ts.group,
-          );
-        }
+          ),
+        );
         final s = totals[ts.empId]!;
         s.totalNormalHours += ts.normalHours;
         s.totalWorkingDays += ts.normalDays;
@@ -1008,274 +1097,262 @@ class TimesheetFunctions {
         s.totalOtApproved += ts.otHoursApproved;
         s.totalOtFinal += ts.otHoursFinal;
       }
+      // Sort by empId ASC
+      final sumEmpOrder = totals.keys.toList()..sort();
 
-      final summary = workbook.worksheets.addWithName('Summary');
-      const sumHdrs = [
-        'No',
-        'Employee ID',
-        'Full name',
-        'Department',
-        'Section',
-        'Group',
+      const sumExtraHdrs = [
         'Total Working (hours)',
         'Total Working (days)',
         'Total OT Actual (hours)',
         'Total OT Approved (hours)',
         'Total OT Final (hours)',
-        'Joining Date',
-        'Resign Date',
       ];
-      for (int c = 0; c < sumHdrs.length; c++) {
-        summary.getRangeByIndex(1, c + 1).setText(sumHdrs[c]);
-      }
+      const sumLastCol = empFixed + 5;
+
+      final summary = workbook.worksheets.addWithName('Summary');
+      writeFixedHeader(summary, sumLastCol, sumExtraHdrs);
 
       int sumNo = 1;
-      for (final empId in empOrder) {
+      for (final empId in sumEmpOrder) {
         final s = totals[empId]!;
         final emp = empLookup[empId];
         final row = sumNo + 1;
-        summary.getRangeByIndex(row, 1).setNumber(sumNo.toDouble());
-        summary.getRangeByIndex(row, 2).setText(s.empId);
-        summary.getRangeByIndex(row, 3).setText(s.name);
-        summary.getRangeByIndex(row, 4).setText(s.department);
-        summary.getRangeByIndex(row, 5).setText(s.section);
-        summary.getRangeByIndex(row, 6).setText(s.group);
-        _setNum(summary.getRangeByIndex(row, 7), s.totalNormalHours);
-        _setNum(summary.getRangeByIndex(row, 8), s.totalWorkingDays);
-        setOtNum(summary.getRangeByIndex(row, 9), s.totalOtActual);
-        setOtNum(summary.getRangeByIndex(row, 10), s.totalOtApproved);
-        setOtNum(summary.getRangeByIndex(row, 11), s.totalOtFinal);
-        _setDate(summary.getRangeByIndex(row, 12), _joiningDate(emp));
-        _setDate(summary.getRangeByIndex(row, 13), _resignDate(emp));
+        writeFixed(
+          summary,
+          row,
+          sumNo,
+          empId,
+          emp,
+          name: s.name,
+          section: s.section,
+          group: s.group,
+        );
+        _setNum(summary.getRangeByIndex(row, empFixed + 1), s.totalNormalHours);
+        _setNum(summary.getRangeByIndex(row, empFixed + 2), s.totalWorkingDays);
+        setOtNum(summary.getRangeByIndex(row, empFixed + 3), s.totalOtActual);
+        setOtNum(summary.getRangeByIndex(row, empFixed + 4), s.totalOtApproved);
+        setOtNum(summary.getRangeByIndex(row, empFixed + 5), s.totalOtFinal);
         sumNo++;
       }
-      _xlsTable(summary, empOrder.length + 1, sumHdrs.length, 'TableSummary');
-      // Fixed column widths + header height/wrap
-      const sumWidths = [
-        4.0,
-        10.0,
-        24.0,
-        10.0,
-        14.0,
-        18.0,
-        8.0,
-        8.0,
-        8.0,
-        8.0,
-        8.0,
-        10.0,
-        10.0,
-      ];
-      for (int i = 0; i < sumWidths.length; i++) {
-        summary.getRangeByIndex(1, i + 1).columnWidth = sumWidths[i];
+      _xlsTable(
+        summary,
+        sumEmpOrder.length + 1,
+        sumLastCol,
+        'TableSummary',
+        clearDataBorders: true,
+      );
+      applyWidths(summary, [8.0, 8.0, 8.0, 8.0, 8.0]);
+      summary.getRangeByIndex(1, 1, 1, sumLastCol).rowHeight = 50;
+      summary.getRangeByIndex(1, 1, 1, sumLastCol).cellStyle.wrapText = true;
+
+      // ── Shared pivot data (sorted by empId) ──────────────────────────────────
+      // Build emp order + date map from all data; sort by empId.
+      final pivotEmpSet = <String>{};
+      final pivotEmpInfo = <String, TimeSheetDate>{};
+      final pivotDateMap = <String, DateTime>{};
+      for (final ts in data) {
+        final dk = _dayKey(ts.date);
+        pivotDateMap[dk] = ts.date;
+        if (pivotEmpSet.add(ts.empId)) {
+          pivotEmpInfo[ts.empId] = ts;
+        }
       }
-      summary.getRangeByIndex(1, 1, 1, sumHdrs.length).rowHeight = 50;
-      summary.getRangeByIndex(1, 1, 1, sumHdrs.length).cellStyle.wrapText =
-          true;
+      final pivotEmpOrder = pivotEmpSet.toList()..sort();
 
-      // ── Sheet 3: Timesheet pivot (employee × date → Working day) ───────────
-      {
-        // Build pivot: empId → dateKey → normalDays
-        final tsEmpOrder = <String>[];
-        final tsEmpInfo = <String, TimeSheetDate>{};
-        final tsPivot = <String, Map<String, double>>{};
-        final tsDateMap = <String, DateTime>{};
+      // Build continuous date list from dateRange; fall back to dates in data.
+      final List<DateTime> allPivotDates;
+      if (dateRange != null && dateRange.length >= 2) {
+        final from = dateRange.first;
+        final to = dateRange.last;
+        allPivotDates = [
+          for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1)))
+            d,
+        ];
+      } else {
+        final sortedKeys = pivotDateMap.keys.toList()..sort();
+        allPivotDates = [for (final k in sortedKeys) pivotDateMap[k]!];
+      }
+      final sortedPivotDates = [for (final d in allPivotDates) _dayKey(d)];
+      final pivotDateCols = sortedPivotDates.length;
+      final pivotTotalCol = empFixed + pivotDateCols + 1;
+      final dateFmtPivot = DateFormat('dd/MM');
+      const sundayGray = '#D9D9D9';
 
-        for (final ts in data) {
-          final dk = _dayKey(ts.date);
-          tsDateMap[dk] = ts.date;
-          if (!tsPivot.containsKey(ts.empId)) {
-            tsEmpOrder.add(ts.empId);
-            tsEmpInfo[ts.empId] = ts;
-            tsPivot[ts.empId] = {};
+      // Write a numeric pivot sheet (Timesheet / Overtime).
+      void writePivotSheet({
+        required String sheetName,
+        required String tableName,
+        required String numberFmt,
+        required Map<String, Map<String, double>> pivotValues,
+        bool skipZeroRows = false,
+      }) {
+        final sheet = workbook.worksheets.addWithName(sheetName);
+        final dateHdrs = [
+          for (final d in allPivotDates) dateFmtPivot.format(d),
+          'Total',
+        ];
+        writeFixedHeader(sheet, pivotTotalCol, dateHdrs);
+
+        void applyCell(xl.Range cell, double val) {
+          if (val > 0) {
+            cell.setNumber(val);
+            cell.numberFormat = val == val.truncateToDouble() ? '0' : numberFmt;
           }
+          cell.cellStyle.hAlign = xl.HAlignType.center;
+        }
+
+        int rowNo = 1;
+        for (final empId in pivotEmpOrder) {
+          final dayMap = pivotValues[empId] ?? {};
+          final total = dayMap.values.fold(0.0, (a, b) => a + b);
+          if (skipZeroRows && total == 0) continue;
+
+          final row = rowNo + 1;
+          final info = pivotEmpInfo[empId]!;
+          final emp = empLookup[empId];
+          writeFixed(
+            sheet,
+            row,
+            rowNo,
+            empId,
+            emp,
+            name: info.name,
+            section: info.section,
+            group: info.group,
+          );
+          for (int ci = 0; ci < pivotDateCols; ci++) {
+            final val = dayMap[sortedPivotDates[ci]] ?? 0.0;
+            applyCell(sheet.getRangeByIndex(row, empFixed + 1 + ci), val);
+          }
+          applyCell(sheet.getRangeByIndex(row, pivotTotalCol), total);
+          rowNo++;
+        }
+
+        _xlsTable(
+          sheet,
+          rowNo, // rowNo = actual data rows written + 1 (header)
+          pivotTotalCol,
+          tableName,
+          clearDataBorders: true,
+        );
+        applyWidths(sheet, [
+          for (int ci = 0; ci <= pivotDateCols; ci++)
+            ci < pivotDateCols ? 6.0 : 8.0,
+        ]);
+
+        // Sunday: gray header cell only; explicitly reset data rows to white
+        // (Syncfusion propagates backColor to the whole column, so we undo it)
+        final dataLastRow = rowNo - 1; // last data row index (1-based)
+        for (int ci = 0; ci < pivotDateCols; ci++) {
+          if (allPivotDates[ci].weekday != DateTime.sunday) continue;
+          final col = empFixed + 1 + ci;
+          sheet.getRangeByIndex(1, col, 1, col).cellStyle.backColor =
+              sundayGray;
+          if (dataLastRow >= 2) {
+            sheet
+                    .getRangeByIndex(2, col, dataLastRow, col)
+                    .cellStyle
+                    .backColor =
+                '#FFFFFF';
+          }
+        }
+      }
+
+      // ── Sheet 3: Timesheet pivot (Working day) ───────────────────────────────
+      {
+        final tsPivot = <String, Map<String, double>>{};
+        for (final ts in data) {
+          tsPivot.putIfAbsent(ts.empId, () => {});
+          final dk = _dayKey(ts.date);
           tsPivot[ts.empId]![dk] =
               (tsPivot[ts.empId]![dk] ?? 0) + ts.normalDays;
         }
-
-        final sortedTsDates = tsDateMap.keys.toList()..sort();
-        const tsFixed = 7; // No, EmpID, FingerID, FullName, Dept, Section, Group
-        final tsLastCol = tsFixed + sortedTsDates.length + 1; // +1 for Total
-        final tsSheet = workbook.worksheets.addWithName('Timesheet');
-        final dateFmtTs = DateFormat('dd/MM');
-
-        // Header row
-        final tsHdrLabels = [
-          'No',
-          'Employee ID',
-          'Finger ID',
-          'Full name',
-          'Department',
-          'Section',
-          'Group',
-        ];
-        for (int c = 0; c < tsHdrLabels.length; c++) {
-          tsSheet.getRangeByIndex(1, c + 1).setText(tsHdrLabels[c]);
-        }
-        for (int ci = 0; ci < sortedTsDates.length; ci++) {
-          tsSheet
-              .getRangeByIndex(1, ci + tsFixed + 1)
-              .setText(dateFmtTs.format(tsDateMap[sortedTsDates[ci]]!));
-        }
-        tsSheet.getRangeByIndex(1, tsLastCol).setText('Total');
-        final tsHdrRange = tsSheet.getRangeByIndex(1, 1, 1, tsLastCol);
-        tsHdrRange.cellStyle.wrapText = true;
-        tsHdrRange.rowHeight = 50;
-
-        // Data rows
-        int tsNo = 1;
-        for (final empId in tsEmpOrder) {
-          final row = tsNo + 1;
-          final info = tsEmpInfo[empId]!;
-          final dayMap = tsPivot[empId]!;
-
-          tsSheet.getRangeByIndex(row, 1).setNumber(tsNo.toDouble());
-          tsSheet.getRangeByIndex(row, 2).setText(info.empId);
-          tsSheet.getRangeByIndex(row, 3).setNumber(info.attFingerId.toDouble());
-          tsSheet.getRangeByIndex(row, 4).setText(info.name);
-          tsSheet.getRangeByIndex(row, 5).setText(info.department);
-          tsSheet.getRangeByIndex(row, 6).setText(info.section);
-          tsSheet.getRangeByIndex(row, 7).setText(info.group);
-
-          double tsTotal = 0;
-          for (int ci = 0; ci < sortedTsDates.length; ci++) {
-            final val = dayMap[sortedTsDates[ci]] ?? 0.0;
-            tsTotal += val;
-            final cell = tsSheet.getRangeByIndex(row, ci + tsFixed + 1);
-            if (val > 0) {
-              cell.setNumber(val);
-              cell.numberFormat =
-                  val == val.truncateToDouble() ? '0' : '0.##';
-            }
-            cell.cellStyle.hAlign = xl.HAlignType.center;
-            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
-          }
-          final totalCell = tsSheet.getRangeByIndex(row, tsLastCol);
-          totalCell.setNumber(tsTotal);
-          totalCell.numberFormat = tsTotal == tsTotal.truncateToDouble() ? '0' : '0.##';
-          totalCell.cellStyle.hAlign = xl.HAlignType.center;
-          totalCell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
-
-          // Border for fixed cols
-          for (int c = 1; c <= tsFixed; c++) {
-            tsSheet
-                .getRangeByIndex(row, c)
-                .cellStyle
-                .borders
-                .all
-                .lineStyle = xl.LineStyle.thin;
-          }
-          tsNo++;
-        }
-
-        _xlsTable(tsSheet, tsEmpOrder.length + 1, tsLastCol, 'TableTimesheet');
-
-        // Column widths
-        const tsFixedWidths = [4.0, 12.0, 8.0, 24.0, 10.0, 14.0, 18.0];
-        for (int i = 0; i < tsFixedWidths.length; i++) {
-          tsSheet.getRangeByIndex(1, i + 1).columnWidth = tsFixedWidths[i];
-        }
-        for (int ci = tsFixed + 1; ci <= tsLastCol; ci++) {
-          tsSheet.getRangeByIndex(1, ci).columnWidth =
-              ci == tsLastCol ? 8.0 : 6.0;
-        }
+        writePivotSheet(
+          sheetName: 'Timesheet',
+          tableName: 'TableTimesheet',
+          numberFmt: '0.##',
+          pivotValues: tsPivot,
+        );
       }
 
-      // ── Sheet 4: Shift pivot ─────────────────────────────────────────────────
-      final pivotData = <String, Map<String, String>>{};
-      final pivotEmpOrder = <String>[];
-      final pivotDates = <String, DateTime>{};
+      // ── Sheet 4: Overtime pivot (OT Final hours) ─────────────────────────────
+      {
+        final otPivot = <String, Map<String, double>>{};
+        for (final ts in data) {
+          if (ts.otHoursFinal <= 0) continue;
+          otPivot.putIfAbsent(ts.empId, () => {});
+          final dk = _dayKey(ts.date);
+          otPivot[ts.empId]![dk] =
+              (otPivot[ts.empId]![dk] ?? 0) + ts.otHoursFinal;
+        }
+        writePivotSheet(
+          sheetName: 'Overtime',
+          tableName: 'TableOvertime',
+          numberFmt: '0.#',
+          pivotValues: otPivot,
+          skipZeroRows: true,
+        );
+      }
 
+      // ── Sheet 5: Shift pivot ─────────────────────────────────────────────────
+      final shiftDataMap = <String, Map<String, String>>{};
+      final shiftEmpSet = <String>{};
       for (final ts in data) {
         if (ts.shift != 'Shift 1' && ts.shift != 'Shift 2') continue;
-        final dk = _dayKey(ts.date);
-        pivotDates[dk] = ts.date;
-        if (!pivotData.containsKey(ts.empId)) {
-          pivotData[ts.empId] = {};
-          pivotEmpOrder.add(ts.empId);
-        }
-        pivotData[ts.empId]![dk] = ts.shift;
+        shiftEmpSet.add(ts.empId);
+        shiftDataMap.putIfAbsent(ts.empId, () => {})[_dayKey(ts.date)] =
+            ts.shift;
       }
 
-      if (pivotData.isNotEmpty) {
-        final sortedDateKeys = pivotDates.keys.toList()..sort();
-        final dateFmt = DateFormat('dd/MM');
+      if (shiftDataMap.isNotEmpty) {
+        final shiftEmpOrder = shiftEmpSet.toList()..sort();
+        // Use the same continuous date range as Timesheet/Overtime
+        final shiftLastCol = empFixed + pivotDateCols;
         final shiftSheet = workbook.worksheets.addWithName('Shift');
-        // Fixed cols: EmpID(1), FullName(2), Group(3), JoiningDate(4), ResignDate(5)
-        const fixedCols = 5;
-        final shiftLastCol = fixedCols + sortedDateKeys.length;
 
-        // Header row
-        shiftSheet.getRangeByIndex(1, 1).setText('Employee ID');
-        shiftSheet.getRangeByIndex(1, 2).setText('Full Name');
-        shiftSheet.getRangeByIndex(1, 3).setText('Group');
-        shiftSheet.getRangeByIndex(1, 4).setText('Joining Date');
-        shiftSheet.getRangeByIndex(1, 5).setText('Resign Date');
-        for (int ci = 0; ci < sortedDateKeys.length; ci++) {
-          shiftSheet
-              .getRangeByIndex(1, ci + fixedCols + 1)
-              .setText(dateFmt.format(pivotDates[sortedDateKeys[ci]]!));
-        }
-        final shiftHdr = shiftSheet.getRangeByIndex(1, 1, 1, shiftLastCol);
-        shiftHdr.cellStyle.bold = true;
-        shiftHdr.cellStyle.backColor = '#D9E2F3';
-        shiftHdr.cellStyle.hAlign = xl.HAlignType.center;
-        shiftHdr.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
+        writeFixedHeader(shiftSheet, shiftLastCol, [
+          for (final d in allPivotDates) dateFmtPivot.format(d),
+        ]);
 
-        const shift1Hex = '#bfd4ed';
-        const shift2Hex = '#beedc8';
+        const shift1Color = '#C55A11'; // dark orange
+        const shift2Color = '#1F4E79'; // dark blue
 
-        void setBorder(xl.Range cell) =>
-            cell.cellStyle.borders.all.lineStyle = xl.LineStyle.thin;
-
-        int shiftRow = 2;
-        for (final empId in pivotEmpOrder) {
-          final empObj = empLookup[empId];
-          final shiftMap = pivotData[empId]!;
-
-          final c1 = shiftSheet.getRangeByIndex(shiftRow, 1);
-          c1.setText(empId);
-          c1.cellStyle.hAlign = xl.HAlignType.center;
-          setBorder(c1);
-
-          final c2 = shiftSheet.getRangeByIndex(shiftRow, 2);
-          c2.setText(empObj?.name ?? '');
-          setBorder(c2);
-
-          final c3 = shiftSheet.getRangeByIndex(shiftRow, 3);
-          c3.setText(empObj?.group ?? '');
-          setBorder(c3);
-
-          final c4 = shiftSheet.getRangeByIndex(shiftRow, 4);
-          _setDate(c4, _joiningDate(empObj));
-          setBorder(c4);
-
-          final c5 = shiftSheet.getRangeByIndex(shiftRow, 5);
-          _setDate(c5, _resignDate(empObj));
-          setBorder(c5);
-
-          for (int ci = 0; ci < sortedDateKeys.length; ci++) {
-            final shiftVal = shiftMap[sortedDateKeys[ci]] ?? '';
-            final cell = shiftSheet.getRangeByIndex(
-              shiftRow,
-              ci + fixedCols + 1,
-            );
-            cell.setText(shiftVal);
+        int shiftRow = 1;
+        for (final empId in shiftEmpOrder) {
+          final row = shiftRow + 1;
+          final emp = empLookup[empId];
+          final shiftMap = shiftDataMap[empId]!;
+          writeFixed(shiftSheet, row, shiftRow, empId, emp);
+          for (int ci = 0; ci < pivotDateCols; ci++) {
+            final dk = sortedPivotDates[ci];
+            final val = shiftMap[dk] ?? '';
+            final cell = shiftSheet.getRangeByIndex(row, empFixed + 1 + ci);
+            cell.setText(val);
             cell.cellStyle.hAlign = xl.HAlignType.center;
-            setBorder(cell);
-            if (shiftVal == 'Shift 1') cell.cellStyle.backColor = shift1Hex;
-            if (shiftVal == 'Shift 2') cell.cellStyle.backColor = shift2Hex;
+            cell.cellStyle.bold = true;
+            if (val == 'Shift 1') cell.cellStyle.fontColor = shift1Color;
+            if (val == 'Shift 2') cell.cellStyle.fontColor = shift2Color;
           }
           shiftRow++;
         }
 
-        shiftSheet.getRangeByIndex(1, 1).columnWidth = 14;
-        shiftSheet.getRangeByIndex(1, 2).columnWidth = 22;
-        shiftSheet.getRangeByIndex(1, 3).columnWidth = 12;
-        shiftSheet.getRangeByIndex(1, 4).columnWidth = 12;
-        shiftSheet.getRangeByIndex(1, 5).columnWidth = 12;
-        for (int ci = fixedCols + 1; ci <= shiftLastCol; ci++) {
-          shiftSheet.getRangeByIndex(1, ci).columnWidth = 10;
+        _xlsTable(
+          shiftSheet,
+          shiftEmpOrder.length + 1,
+          shiftLastCol,
+          'TableShift',
+          clearDataBorders: true,
+        );
+        applyWidths(shiftSheet, [
+          for (int ci = 0; ci < pivotDateCols; ci++) 8.0,
+        ]);
+
+        // Sunday: gray header only (no data cell backColor to reset)
+        for (int ci = 0; ci < pivotDateCols; ci++) {
+          if (allPivotDates[ci].weekday != DateTime.sunday) continue;
+          final col = empFixed + 1 + ci;
+          shiftSheet.getRangeByIndex(1, col, 1, col).cellStyle.backColor =
+              sundayGray;
         }
       }
 
@@ -1292,7 +1369,7 @@ class TimesheetFunctions {
 // ── Helper for summary aggregation ───────────────────────────────────────────
 
 class _EmpSummary {
-  final String empId, name, department, section, group;
+  final String empId, name, section, group;
   double totalNormalHours = 0;
   double totalWorkingDays = 0;
   double totalOtActual = 0;
@@ -1302,7 +1379,6 @@ class _EmpSummary {
   _EmpSummary({
     required this.empId,
     required this.name,
-    required this.department,
     required this.section,
     required this.group,
   });
