@@ -337,7 +337,7 @@ class TimesheetFunctions {
             if (isYoungChild || isPregnant) {
               // shiftEnd already reduced by 1h (= reducedShiftEnd)
               // Credit: 4h if arrived at reducedShiftEnd; else 4 - earlyBy
-              afternoon = _youngChildAfternoon(lo, restEnd, shiftEnd);
+              afternoon = _pregnantYoungChildAfternoon(lo, restEnd, shiftEnd);
             } else {
               if (!lo.isBefore(restEnd)) {
                 afternoon = _normalAfternoon(fi, lo, shiftEnd, restEnd);
@@ -602,11 +602,12 @@ class TimesheetFunctions {
   ///     Combined with morning (4h): total = 8 − earlyBy (regardless of whether lo falls
   ///     in afternoon, rest window, or even morning — the clamp prevents negative values).
   ///   floor at 0; cap at 4.
-  static double _youngChildAfternoon(
+  static double _pregnantYoungChildAfternoon(
     DateTime lo,
     DateTime restEnd,
     DateTime reducedShiftEnd,
   ) {
+    if (lo.isBefore(restEnd)) return 0;
     if (!lo.isBefore(reducedShiftEnd)) return 4; // on time or later
     // Left before the reduced end → partial credit: 8 - earlyBy total (incl. morning 4h)
     final earlyBy = reducedShiftEnd.difference(lo).inMinutes / 60;
