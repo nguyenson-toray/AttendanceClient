@@ -25,8 +25,11 @@ class Att extends StatefulWidget {
 class _AttState extends State<Att> with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   late TabController _tabController;
+  final GlobalKey<EmployeeTabState> _employeeKey = GlobalKey();
+  final GlobalKey<AttTabState> _attKey = GlobalKey();
   final GlobalKey<OvertimeTabState> _overtimeKey = GlobalKey();
   final GlobalKey<ShiftTabState> _shiftKey = GlobalKey();
+  final GlobalKey<TimesheetTabState> _timesheetKey = GlobalKey();
 
   @override
   void initState() {
@@ -248,6 +251,29 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
           const SizedBox(height: 8),
           FloatingActionButton(
             mini: true,
+            heroTag: 'clearFilter',
+            backgroundColor: AppColors.surface,
+            foregroundColor: AppColors.primary,
+            tooltip: 'Clear All Filters',
+            onPressed: () {
+              switch (_tabController.index) {
+                case 0:
+                  _employeeKey.currentState?.clearFilters();
+                case 1:
+                  _attKey.currentState?.clearFilters();
+                case 2:
+                  _overtimeKey.currentState?.clearFilters();
+                case 3:
+                  _shiftKey.currentState?.clearFilters();
+                case 4:
+                  _timesheetKey.currentState?.clearFilters();
+              }
+            },
+            child: const Icon(Icons.filter_alt_off, size: 20),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            mini: true,
             heroTag: 'refresh',
             onPressed: () async {
               int tabIndex = _tabController.index;
@@ -327,11 +353,11 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
           : TabBarView(
               controller: _tabController,
               children: [
-                EmployeeTab(),
-                AttTab(),
+                EmployeeTab(key: _employeeKey),
+                AttTab(key: _attKey),
                 OvertimeTab(key: _overtimeKey),
                 ShiftTab(key: _shiftKey),
-                TimesheetTab(),
+                TimesheetTab(key: _timesheetKey),
                 HistoryTab(),
               ],
             ),

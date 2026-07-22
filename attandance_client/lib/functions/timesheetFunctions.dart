@@ -509,8 +509,13 @@ class TimesheetFunctions {
         }
         // ── Sunday: all worked hours become OT ────────────────────────────
         if (date.weekday == DateTime.sunday) {
-          if (otApproved > 0) {
-            otApproved = shiftEnd.difference(shiftBegin).inMinutes / 60;
+          // otApproved from _calcOtRecords may be 0 when the OT register
+          // exactly matches the shift window (e.g. 08:00-12:00), because
+          // that record is neither "before shift" nor "after shift" nor
+          // "full-day spanning noon". Use shiftEnd−shiftBegin instead,
+          // guarded by whether the employee has any OT register for this day.
+          if (empIdOT.contains(emp.empId)) {
+            otApproved = shiftEnd.difference(shiftBegin).inMinutes / 60.0;
             if (shiftBegin.hour < 12 && shiftEnd.hour > 13) otApproved -= 1;
           }
           otActual = normalHrs;

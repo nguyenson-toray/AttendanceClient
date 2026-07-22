@@ -138,6 +138,8 @@ class OvertimeTabState extends State<OvertimeTab>
     return null;
   }
 
+  void clearFilters() => _otDataSource.clearFilters();
+
   void refreshData() {
     setState(() {
       _isFilteringOverlaps = false;

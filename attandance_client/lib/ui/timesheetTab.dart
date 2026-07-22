@@ -18,10 +18,10 @@ class TimesheetTab extends StatefulWidget {
   const TimesheetTab({super.key});
 
   @override
-  State<TimesheetTab> createState() => _TimesheetTabState();
+  State<TimesheetTab> createState() => TimesheetTabState();
 }
 
-class _TimesheetTabState extends State<TimesheetTab>
+class TimesheetTabState extends State<TimesheetTab>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -138,6 +138,11 @@ class _TimesheetTabState extends State<TimesheetTab>
     } finally {
       if (mounted) overlay.hide();
     }
+  }
+
+  void clearFilters() {
+    _dataSource.clearFilters();
+    _summaryDataSource.clearFilters();
   }
 
   // ── Export ────────────────────────────────────────────────────────────────

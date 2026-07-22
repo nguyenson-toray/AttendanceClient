@@ -21,10 +21,10 @@ class AttTab extends StatefulWidget {
   const AttTab({super.key});
 
   @override
-  State<AttTab> createState() => _AttTabState();
+  State<AttTab> createState() => AttTabState();
 }
 
-class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
+class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
   AttLogDataSource attLogDataSource = AttLogDataSource(
@@ -1122,6 +1122,8 @@ class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
 
     super.initState();
   }
+
+  void clearFilters() => attLogDataSource.clearFilters();
 
   @override
   Widget build(BuildContext context) {

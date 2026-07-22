@@ -124,6 +124,8 @@ class ShiftTabState extends State<ShiftTab>
     super.dispose();
   }
 
+  void clearFilters() => _shiftDataSource.clearFilters();
+
   void refreshData() {
     setState(() {
       _isFilteringOverlaps = false;

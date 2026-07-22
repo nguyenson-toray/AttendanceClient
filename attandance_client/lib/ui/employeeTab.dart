@@ -16,10 +16,10 @@ class EmployeeTab extends StatefulWidget {
   const EmployeeTab({super.key});
 
   @override
-  State<EmployeeTab> createState() => _EmployeeTabState();
+  State<EmployeeTab> createState() => EmployeeTabState();
 }
 
-class _EmployeeTabState extends State<EmployeeTab>
+class EmployeeTabState extends State<EmployeeTab>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
@@ -68,20 +68,50 @@ class _EmployeeTabState extends State<EmployeeTab>
 
       // Same columns as the grid (same order, same labels)
       const headers = [
-        'No', 'ID', 'Att ID', 'Full Name', 'Group', 'Position',
-        'Joining Date', 'Work Status', 'Resign On',
-        'Mat. Begin', 'Mat. L.Begin', 'Mat. L.End', 'Mat. End',
+        'No',
+        'ID',
+        'Att ID',
+        'Full Name',
+        'Group',
+        'Position',
+        'Joining Date',
+        'Work Status',
+        'Resign On',
+        'Mat. Begin',
+        'Mat. L.Begin',
+        'Mat. L.End',
+        'Mat. End',
       ];
       const colWidths = [
-        4.0, 12.0, 8.0, 24.0, 16.0, 16.0,
-        12.0, 12.0, 12.0,
-        12.0, 14.0, 14.0, 12.0,
+        4.0,
+        12.0,
+        8.0,
+        24.0,
+        16.0,
+        16.0,
+        12.0,
+        12.0,
+        12.0,
+        12.0,
+        14.0,
+        14.0,
+        12.0,
       ];
       // column names matching DataGridCell.columnName (null = 'No' which we add)
       const colNames = [
-        null, 'empID', 'attId', 'name', 'group', 'position',
-        'joiningDate', 'workStatus', 'resignOn',
-        'maternityBegin', 'maternityLeaveBegin', 'maternityLeaveEnd', 'maternityEnd',
+        null,
+        'empID',
+        'attId',
+        'name',
+        'group',
+        'position',
+        'joiningDate',
+        'workStatus',
+        'resignOn',
+        'maternityBegin',
+        'maternityLeaveBegin',
+        'maternityLeaveEnd',
+        'maternityEnd',
       ];
       const leftCols = {'name', 'group', 'position'};
 
@@ -99,8 +129,13 @@ class _EmployeeTabState extends State<EmployeeTab>
       }
 
       final useFiltered = await MyFunctions.showFilterExportDialog(
-        context, employeeDataSource);
-      if (useFiltered == null) { overlay.hide(); return; }
+        context,
+        employeeDataSource,
+      );
+      if (useFiltered == null) {
+        overlay.hide();
+        return;
+      }
 
       final rows = useFiltered
           ? employeeDataSource.effectiveRows
@@ -118,7 +153,9 @@ class _EmployeeTabState extends State<EmployeeTab>
             xlCell.setNumber((i + 1).toDouble());
             xlCell.cellStyle.hAlign = xl.HAlignType.center;
           } else {
-            final dataCell = cells.where((dc) => dc.columnName == name).firstOrNull;
+            final dataCell = cells
+                .where((dc) => dc.columnName == name)
+                .firstOrNull;
             final val = dataCell?.value?.toString() ?? '';
             xlCell.setText(val);
             xlCell.cellStyle.hAlign = leftCols.contains(name)
@@ -404,6 +441,8 @@ class _EmployeeTabState extends State<EmployeeTab>
     showToast('Updated maternity for ${emp.empId}');
   }
 
+  void clearFilters() => employeeDataSource.clearFilters();
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -429,108 +468,118 @@ class _EmployeeTabState extends State<EmployeeTab>
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
             child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: SfDataGridTheme(
-          data: SfDataGridThemeData(
-            selectionColor: AppColors.primaryTint,
-            headerColor: AppColors.primaryTint,
-            gridLineColor: AppColors.border,
-            gridLineStrokeWidth: 0.5,
-            rowHoverColor: AppColors.surfaceAlt,
-          ),
-          child: SfDataGrid(
-            source: employeeDataSource,
-            selectionMode: SelectionMode.single,
-            navigationMode: GridNavigationMode.row,
-            allowMultiColumnSorting: true,
-            allowColumnsDragging: true,
-            allowFiltering: true,
-            allowSorting: true,
-            allowPullToRefresh: true,
-            columnWidthMode: ColumnWidthMode.fill,
-            highlightRowOnHover: true,
-            showColumnHeaderIconOnHover: true,
-            gridLinesVisibility: GridLinesVisibility.horizontal,
-            headerGridLinesVisibility: GridLinesVisibility.horizontal,
-            onCellSecondaryTap: (details) {
-              if (App.gValue.permission != 'edit') return;
-              final rowIndex = details.rowColumnIndex.rowIndex - 1;
-              final effectiveRows = employeeDataSource.effectiveRows;
-              if (rowIndex < 0 || rowIndex >= effectiveRows.length) return;
-              final cells = effectiveRows[rowIndex].getCells();
-              final empId =
-                  cells.firstWhere((c) => c.columnName == 'empID').value
-                      as String;
-              final emp = _findEmployee(empId);
-              if (emp.gender!.startsWith('M')) {
-                showToast('Maternity edit only available for female employees');
-                return;
-              }
-              final pos = details.globalPosition;
-              showContextMenu(
-                context,
-                pos,
-                onEdit: () {
-                  _showEditMaternityDialog(emp);
-                },
-              );
-            },
-            columns: [
-              GridColumn(
-                columnName: 'empID',
-                label: const Center(child: Text('ID')),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
               ),
-              GridColumn(
-                columnName: 'attId',
-                label: const Center(child: Text('Att ID')),
+              clipBehavior: Clip.antiAlias,
+              child: SfDataGridTheme(
+                data: SfDataGridThemeData(
+                  selectionColor: AppColors.primaryTint,
+                  headerColor: AppColors.primaryTint,
+                  gridLineColor: AppColors.border,
+                  gridLineStrokeWidth: 0.5,
+                  rowHoverColor: AppColors.surfaceAlt,
+                ),
+                child: SfDataGrid(
+                  source: employeeDataSource,
+                  selectionMode: SelectionMode.single,
+                  navigationMode: GridNavigationMode.row,
+                  allowMultiColumnSorting: true,
+
+                  allowColumnsDragging: true,
+                  allowFiltering: true,
+                  allowSorting: true,
+                  allowPullToRefresh: true,
+                  columnWidthMode: ColumnWidthMode.fill,
+                  highlightRowOnHover: true,
+                  showColumnHeaderIconOnHover: true,
+                  gridLinesVisibility: GridLinesVisibility.horizontal,
+                  headerGridLinesVisibility: GridLinesVisibility.horizontal,
+                  onCellSecondaryTap: (details) {
+                    if (App.gValue.permission != 'edit') return;
+                    final rowIndex = details.rowColumnIndex.rowIndex - 1;
+                    final effectiveRows = employeeDataSource.effectiveRows;
+                    if (rowIndex < 0 || rowIndex >= effectiveRows.length)
+                      return;
+                    final cells = effectiveRows[rowIndex].getCells();
+                    final empId =
+                        cells.firstWhere((c) => c.columnName == 'empID').value
+                            as String;
+                    final emp = _findEmployee(empId);
+                    if (emp.gender!.startsWith('M')) {
+                      showToast(
+                        'Maternity edit only available for female employees',
+                      );
+                      return;
+                    }
+                    final pos = details.globalPosition;
+                    showContextMenu(
+                      context,
+                      pos,
+                      onEdit: () {
+                        _showEditMaternityDialog(emp);
+                      },
+                    );
+                  },
+                  columns: [
+                    GridColumn(
+                      columnName: 'empID',
+                      label: const Center(child: Text('ID')),
+                    ),
+                    GridColumn(
+                      columnName: 'attId',
+                      label: const Center(child: Text('Att ID')),
+                    ),
+                    GridColumn(
+                      columnName: 'name',
+                      label: const Text('  Full Name'),
+                    ),
+                    GridColumn(
+                      columnName: 'group',
+                      label: const Text('  Group'),
+                    ),
+                    GridColumn(
+                      columnName: 'position',
+                      label: const Text('  Position'),
+                    ),
+                    GridColumn(
+                      columnName: 'joiningDate',
+                      label: const Center(child: Text('Joining Date')),
+                    ),
+                    GridColumn(
+                      columnName: 'workStatus',
+                      label: const Center(child: Text('Work Status')),
+                    ),
+                    GridColumn(
+                      columnName: 'resignOn',
+                      label: const Center(child: Text('Resign On')),
+                    ),
+                    GridColumn(
+                      columnName: 'maternityBegin',
+                      width: 110,
+                      label: const Center(child: Text('Mat. Begin')),
+                    ),
+                    GridColumn(
+                      columnName: 'maternityLeaveBegin',
+                      width: 120,
+                      label: const Center(child: Text('Mat. L.Begin')),
+                    ),
+                    GridColumn(
+                      columnName: 'maternityLeaveEnd',
+                      width: 120,
+                      label: const Center(child: Text('Mat. L.End')),
+                    ),
+                    GridColumn(
+                      columnName: 'maternityEnd',
+                      width: 110,
+                      label: const Center(child: Text('Mat. End')),
+                    ),
+                  ],
+                ),
               ),
-              GridColumn(columnName: 'name', label: const Text('  Full Name')),
-              GridColumn(columnName: 'group', label: const Text('  Group')),
-              GridColumn(
-                columnName: 'position',
-                label: const Text('  Position'),
-              ),
-              GridColumn(
-                columnName: 'joiningDate',
-                label: const Center(child: Text('Joining Date')),
-              ),
-              GridColumn(
-                columnName: 'workStatus',
-                label: const Center(child: Text('Work Status')),
-              ),
-              GridColumn(
-                columnName: 'resignOn',
-                label: const Center(child: Text('Resign On')),
-              ),
-              GridColumn(
-                columnName: 'maternityBegin',
-                width: 110,
-                label: const Center(child: Text('Mat. Begin')),
-              ),
-              GridColumn(
-                columnName: 'maternityLeaveBegin',
-                width: 120,
-                label: const Center(child: Text('Mat. L.Begin')),
-              ),
-              GridColumn(
-                columnName: 'maternityLeaveEnd',
-                width: 120,
-                label: const Center(child: Text('Mat. L.End')),
-              ),
-              GridColumn(
-                columnName: 'maternityEnd',
-                width: 110,
-                label: const Center(child: Text('Mat. End')),
-              ),
-            ],
-          ),
-        ),
-        ),
+            ),
           ),
         ),
       ],
