@@ -143,6 +143,21 @@ class _TimesheetTabState extends State<TimesheetTab>
   // ── Export ────────────────────────────────────────────────────────────────
 
   Future<void> _export() async {
+    final source = _showSummary ? _summaryDataSource : _dataSource;
+    final ctx = context;
+    final useFiltered = await MyFunctions.showFilterExportDialog(ctx, source);
+    if (useFiltered == null || !mounted) return;
+
+    Set<String>? filterEmpIds;
+    if (useFiltered) {
+      filterEmpIds = source.effectiveRows
+          .map((r) => r
+              .getCells()
+              .firstWhere((c) => c.columnName == 'empId')
+              .value as String)
+          .toSet();
+    }
+
     final overlay = context.loaderOverlay;
     overlay.show();
     try {
@@ -150,6 +165,7 @@ class _TimesheetTabState extends State<TimesheetTab>
         _tsResult!,
         employees: App.gValue.employees,
         dateRange: App.gValue.dateRangeTimesheet,
+        filterEmpIds: filterEmpIds,
       );
     } finally {
       if (mounted) overlay.hide();

@@ -2,9 +2,11 @@ import 'package:attandance_client/appColors.dart';
 import 'package:attandance_client/ui/contextMenu.dart';
 import 'package:attandance_client/main.dart';
 import 'package:attandance_client/model/employee.dart';
+import 'package:attandance_client/functions/myFunctions.dart';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_datagrid/datagrid.dart';
 import 'package:syncfusion_flutter_core/theme.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xl;
 import 'package:intl/intl.dart';
 import 'package:loader_overlay/loader_overlay.dart';
 import 'package:oktoast/oktoast.dart';
@@ -54,6 +56,85 @@ class _EmployeeTabState extends State<EmployeeTab>
       (e) => e.empId == empId,
       orElse: () => Employee(empId: empId),
     );
+  }
+
+  Future<void> _exportEmployeesToExcel() async {
+    final overlay = context.loaderOverlay;
+    overlay.show();
+    try {
+      final workbook = xl.Workbook();
+      final sheet = workbook.worksheets[0];
+      sheet.name = 'Employees';
+
+      // Same columns as the grid (same order, same labels)
+      const headers = [
+        'No', 'ID', 'Att ID', 'Full Name', 'Group', 'Position',
+        'Joining Date', 'Work Status', 'Resign On',
+        'Mat. Begin', 'Mat. L.Begin', 'Mat. L.End', 'Mat. End',
+      ];
+      const colWidths = [
+        4.0, 12.0, 8.0, 24.0, 16.0, 16.0,
+        12.0, 12.0, 12.0,
+        12.0, 14.0, 14.0, 12.0,
+      ];
+      // column names matching DataGridCell.columnName (null = 'No' which we add)
+      const colNames = [
+        null, 'empID', 'attId', 'name', 'group', 'position',
+        'joiningDate', 'workStatus', 'resignOn',
+        'maternityBegin', 'maternityLeaveBegin', 'maternityLeaveEnd', 'maternityEnd',
+      ];
+      const leftCols = {'name', 'group', 'position'};
+
+      final hdrStyle = workbook.styles.add('empHdr');
+      hdrStyle.bold = true;
+      hdrStyle.backColor = '#1F3864';
+      hdrStyle.fontColor = '#FFFFFF';
+      hdrStyle.hAlign = xl.HAlignType.center;
+
+      for (var c = 0; c < headers.length; c++) {
+        final cell = sheet.getRangeByIndex(1, c + 1);
+        cell.setText(headers[c]);
+        cell.cellStyle = hdrStyle;
+        cell.columnWidth = colWidths[c];
+      }
+
+      final useFiltered = await MyFunctions.showFilterExportDialog(
+        context, employeeDataSource);
+      if (useFiltered == null) { overlay.hide(); return; }
+
+      final rows = useFiltered
+          ? employeeDataSource.effectiveRows
+          : employeeDataSource.rows;
+      for (var i = 0; i < rows.length; i++) {
+        final dataRow = rows[i];
+        final cells = dataRow.getCells();
+        final xlRow = i + 2;
+
+        for (var c = 0; c < colNames.length; c++) {
+          final xlCell = sheet.getRangeByIndex(xlRow, c + 1);
+          final name = colNames[c];
+          if (name == null) {
+            // 'No' column
+            xlCell.setNumber((i + 1).toDouble());
+            xlCell.cellStyle.hAlign = xl.HAlignType.center;
+          } else {
+            final dataCell = cells.where((dc) => dc.columnName == name).firstOrNull;
+            final val = dataCell?.value?.toString() ?? '';
+            xlCell.setText(val);
+            xlCell.cellStyle.hAlign = leftCols.contains(name)
+                ? xl.HAlignType.left
+                : xl.HAlignType.center;
+          }
+        }
+      }
+
+      await MyFunctions.saveAndOpenWorkbook(
+        workbook,
+        MyFunctions.exportFileName('Employees'),
+      );
+    } finally {
+      if (mounted) overlay.hide();
+    }
   }
 
   Future<void> _showEditMaternityDialog(Employee emp) async {
@@ -326,9 +407,28 @@ class _EmployeeTabState extends State<EmployeeTab>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return Padding(
-      padding: const EdgeInsets.all(10),
-      child: Container(
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+          child: Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _exportEmployeesToExcel,
+                icon: const Icon(Icons.download, size: 16),
+                label: const Text('Export Excel'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.onPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
@@ -430,7 +530,10 @@ class _EmployeeTabState extends State<EmployeeTab>
             ],
           ),
         ),
-      ),
+        ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1061,6 +1061,13 @@ class ShiftTabState extends State<ShiftTab>
 
                       TextButton.icon(
                         onPressed: () async {
+                          final ctx = context;
+                          final useFiltered =
+                              await MyFunctions.showFilterExportDialog(
+                                ctx,
+                                _shiftDataSource,
+                              );
+                          if (useFiltered == null || !mounted) return;
                           final overlay = context.loaderOverlay;
                           overlay.show();
                           await MyFunctions.exportGridToExcel(
@@ -1074,6 +1081,7 @@ class ShiftTabState extends State<ShiftTab>
                               'Group',
                             ],
                             type: 'Shift',
+                            useEffectiveRows: useFiltered,
                           );
                           overlay.hide();
                         },

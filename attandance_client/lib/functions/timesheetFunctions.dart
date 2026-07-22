@@ -578,7 +578,7 @@ class TimesheetFunctions {
   ) {
     final start = fi.isBefore(shiftBegin) ? shiftBegin : fi;
     final end = lo.isBefore(restBegin) ? lo : restBegin;
-    return (end.difference(start).inMinutes / 60).clamp(0, double.infinity);
+    return (end.difference(start).inSeconds / 3600.0).clamp(0, double.infinity);
   }
 
   static double _normalAfternoon(
@@ -589,7 +589,7 @@ class TimesheetFunctions {
   ) {
     final start = fi.isAfter(restEnd) ? fi : restEnd;
     final end = lo.isAfter(shiftEnd) ? shiftEnd : lo;
-    return (end.difference(start).inMinutes / 60).clamp(0, double.infinity);
+    return (end.difference(start).inSeconds / 3600.0).clamp(0, double.infinity);
   }
 
   /// Afternoon hours for "young child / pregnant" employees.
@@ -830,8 +830,11 @@ class TimesheetFunctions {
     TimesheetResult tsResult, {
     required List<Employee> employees,
     List<DateTime>? dateRange,
+    Set<String>? filterEmpIds,
   }) async {
-    final data = tsResult.data;
+    final data = filterEmpIds != null
+        ? tsResult.data.where((t) => filterEmpIds.contains(t.empId)).toList()
+        : tsResult.data;
     final anomalies = tsResult.anomalies;
     if (data.isEmpty) {
       showToast('No timesheet data to export');

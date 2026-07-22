@@ -1288,6 +1288,13 @@ class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
                     children: [
                       TextButton.icon(
                         onPressed: () async {
+                          final ctx = context;
+                          final useFiltered =
+                              await MyFunctions.showFilterExportDialog(
+                                ctx,
+                                attLogDataSource,
+                              );
+                          if (useFiltered == null || !mounted) return;
                           final overlay = context.loaderOverlay;
                           overlay.show();
                           await MyFunctions.exportGridToExcel(
@@ -1301,6 +1308,7 @@ class _AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
                               'Machine No',
                             ],
                             type: 'AttLog',
+                            useEffectiveRows: useFiltered,
                           );
                           overlay.hide();
                         },

@@ -165,6 +165,41 @@ class MyFunctions {
     return employeeMap;
   }
 
+  /// Shows a dialog asking whether to export filtered or all rows.
+  /// Returns `true` → use effectiveRows (filtered), `false` → use all rows, `null` → cancelled.
+  /// If no filter is active (effectiveRows.length >= rows.length), returns `false` immediately.
+  static Future<bool?> showFilterExportDialog(
+    BuildContext context,
+    DataGridSource source,
+  ) async {
+    final total = source.rows.length;
+    final filtered = source.effectiveRows.length;
+    if (filtered >= total) return false;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Export Data'),
+        content: Text(
+          'Filter is active: $filtered / $total rows shown.\nExport filtered rows or all rows?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('All ($total)'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Filtered ($filtered)'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Generate a file name with timestamp: [type]_YYMMDD_HHMMSS
   /// If [dateRange] is provided: [type]_fromYYMMDD_toYYMMDD_HHMMSS
   static String exportFileName(String type, {List<DateTime>? dateRange}) {
@@ -324,6 +359,7 @@ class MyFunctions {
     required DataGridSource source,
     required List<String> headers,
     required String type,
+    bool useEffectiveRows = false,
   }) async {
     try {
       final workbook = xl.Workbook();
@@ -336,7 +372,7 @@ class MyFunctions {
       }
 
       // Data rows
-      final rows = source.rows;
+      final rows = useEffectiveRows ? source.effectiveRows : source.rows;
       final dataForWidth = <List<dynamic>>[];
       for (int r = 0; r < rows.length; r++) {
         final cells = rows[r].getCells();

@@ -1214,6 +1214,13 @@ class OvertimeTabState extends State<OvertimeTab>
 
                       TextButton.icon(
                         onPressed: () async {
+                          final ctx = context;
+                          final useFiltered =
+                              await MyFunctions.showFilterExportDialog(
+                                ctx,
+                                _otDataSource,
+                              );
+                          if (useFiltered == null || !mounted) return;
                           final overlay = context.loaderOverlay;
                           overlay.show();
                           await MyFunctions.exportGridToExcel(
@@ -1229,6 +1236,7 @@ class OvertimeTabState extends State<OvertimeTab>
                               'Group',
                             ],
                             type: 'Overtime',
+                            useEffectiveRows: useFiltered,
                           );
                           overlay.hide();
                         },
