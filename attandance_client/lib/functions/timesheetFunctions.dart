@@ -440,11 +440,10 @@ class TimesheetFunctions {
         }
 
         // ── Anomaly detection ─────────────────────────────────────────────
-        if (empLogs.isNotEmpty && firstIn != null && lastOut != null) {
+        // ── Anomaly #1: attendance after resignation (requires only empLogs) ──
+        if (empLogs.isNotEmpty) {
           final datStr = DateFormat('yyyy-MM-dd').format(date);
           final empTag = '${emp.empId} ${emp.name}';
-
-          // 1. Has resignOn date and attendance on/after that date
           if (emp.resignOn != null &&
               emp.resignOn!.year < 2099 &&
               !date.isBefore(emp.resignOn!.toBeginDay())) {
@@ -454,6 +453,11 @@ class TimesheetFunctions {
               ', has ${empLogs.length} log(s)',
             );
           }
+        }
+
+        if (empLogs.isNotEmpty && firstIn != null && lastOut != null) {
+          final datStr = DateFormat('yyyy-MM-dd').format(date);
+          final empTag = '${emp.empId} ${emp.name}';
 
           // 2. Day-shift employee leaves 16:xx without a regime — likely missing
           //    maternity/young-child dates in DB.
