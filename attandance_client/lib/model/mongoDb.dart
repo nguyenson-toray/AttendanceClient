@@ -517,6 +517,7 @@ class MongoDb {
       if (!db.isConnected) await initDB();
       await colHistory.insertOne({
         'pcName': Platform.localHostname,
+        'userName': Platform.environment['USERNAME'] ?? '',
         'time': DateTime.now().toUtcKeepValue(),
         'log': log,
       });
@@ -542,5 +543,47 @@ class MongoDb {
     }
     logger.t('getHistory: ${result.length} records');
     return result;
+  }
+
+  /// Returns the newest otDate in the OT register collection, or null if empty.
+  Future<DateTime?> getMaxOtDate() async {
+    try {
+      if (!db.isConnected) await initDB();
+      final doc = await colOtRegister.findOne(
+        where.sortBy('otDate', descending: true),
+      );
+      return doc?['otDate'] as DateTime?;
+    } catch (e) {
+      logger.t('getMaxOtDate: $e');
+      return null;
+    }
+  }
+
+  /// Returns the newest toDate in the shift register collection, or null if empty.
+  Future<DateTime?> getMaxShiftDate() async {
+    try {
+      if (!db.isConnected) await initDB();
+      final doc = await colShiftRegister.findOne(
+        where.sortBy('toDate', descending: true),
+      );
+      return doc?['toDate'] as DateTime?;
+    } catch (e) {
+      logger.t('getMaxShiftDate: $e');
+      return null;
+    }
+  }
+
+  /// Returns the newest time in the history collection, or null if empty.
+  Future<DateTime?> getMaxHistoryTime() async {
+    try {
+      if (!db.isConnected) await initDB();
+      final doc = await colHistory.findOne(
+        where.sortBy('time', descending: true),
+      );
+      return doc?['time'] as DateTime?;
+    } catch (e) {
+      logger.t('getMaxHistoryTime: $e');
+      return null;
+    }
   }
 }

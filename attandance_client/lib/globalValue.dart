@@ -30,19 +30,19 @@ class GValue {
     DateTime.now().toEndDay(),
   ];
   List<DateTime> dateRangeOvertime = [
-    DateTime.now().subtract(Duration(days: 14)).toBeginDay(),
-    DateTime.now().add(Duration(days: 14)).toEndDay(),
+    DateTime.now().toBeginDay(),
+    DateTime.now().toEndDay(),
   ];
   List<DateTime> dateRangeShift = [
-    DateTime(DateTime.now().year - 1, 12, 31).toBeginDay(),
-    DateTime(DateTime.now().year, 12, 25).toBeginDay(),
+    DateTime.now().toBeginDay(),
+    DateTime.now().toEndDay(),
   ];
   List<DateTime> dateRangeTimesheet = [
-    DateTime.now().subtract(Duration(days: 15)).toBeginDay(),
-    DateTime.now().subtract(Duration(days: 1)).toEndDay(),
+    DateTime.now().toBeginDay(),
+    DateTime.now().toEndDay(),
   ];
   List<DateTime> dateRangeHistory = [
-    DateTime.now().subtract(const Duration(days: 7)).toBeginDay(),
+    DateTime.now().subtract(const Duration(days: 14)).toBeginDay(),
     DateTime.now().toEndDay(),
   ];
   PackageInfo packageInfo = PackageInfo(

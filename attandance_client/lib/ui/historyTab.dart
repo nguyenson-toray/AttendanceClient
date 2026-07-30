@@ -151,6 +151,28 @@ class _HistoryTabState extends State<HistoryTab>
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () async {
+                    final ctx = context;
+                    final overlay = ctx.loaderOverlay;
+                    final useFiltered = await MyFunctions.showFilterExportDialog(
+                      ctx,
+                      _histDataSource,
+                    );
+                    if (useFiltered == null || !mounted) return;
+                    overlay.show();
+                    await MyFunctions.exportGridToExcel(
+                      source: _histDataSource,
+                      headers: ['Time', 'PC Name', 'User', 'Log'],
+                      type: 'History',
+                      useEffectiveRows: useFiltered,
+                    );
+                    overlay.hide();
+                  },
+                  icon: const Icon(Icons.download, color: AppColors.success),
+                  label: const Text('Export'),
+                ),
               ],
             ),
           ),
@@ -193,6 +215,11 @@ class _HistoryTabState extends State<HistoryTab>
                       label: const Text('PC Name'),
                       width: 130,
                     ),
+                    GridColumn(
+                      columnName: 'userName',
+                      label: const Text('User'),
+                      width: 120,
+                    ),
                     GridColumn(columnName: 'log', label: const Text('Log')),
                   ],
                 ),
@@ -215,6 +242,7 @@ class HistoryDataSource extends DataGridSource {
             value: DateFormat('dd/MM/yyyy HH:mm:ss').format(e.time),
           ),
           DataGridCell<String>(columnName: 'pcName', value: e.pcName),
+          DataGridCell<String>(columnName: 'userName', value: e.userName),
           DataGridCell<String>(columnName: 'log', value: e.log),
         ],
       );

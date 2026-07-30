@@ -111,6 +111,12 @@ class MyFunctions {
     context.loaderOverlay.hide();
   }
 
+  static List<DateTime> rangeFromMaxDate(DateTime? maxDate) {
+    final end = (maxDate ?? DateTime.now()).toEndDay();
+    final start = end.subtract(const Duration(days: 14)).toBeginDay();
+    return [start, end];
+  }
+
   /// Returns a map with keys 'present' and 'absent', each containing a list of [Employee].
   /// Active on [date] = workStatus contains 'Working', OR workStatus contains 'Resigned' but resignOn > date.
   static Map<String, List<Employee>> getPresentAbsent(

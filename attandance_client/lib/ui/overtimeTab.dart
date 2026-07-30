@@ -132,8 +132,10 @@ class OvertimeTabState extends State<OvertimeTab>
   /// Accepts HH:mm format, 00:00–23:59, and begin must be before end.
   static String? _validateTimes(String begin, String end) {
     final re = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$');
-    if (!re.hasMatch(begin)) return 'Begin time không đúng định dạng HH:mm (vd: 17:00)';
-    if (!re.hasMatch(end)) return 'End time không đúng định dạng HH:mm (vd: 19:00)';
+    if (!re.hasMatch(begin))
+      return 'Begin time không đúng định dạng HH:mm (vd: 17:00)';
+    if (!re.hasMatch(end))
+      return 'End time không đúng định dạng HH:mm (vd: 19:00)';
     if (begin.compareTo(end) >= 0) return 'Begin phải trước End';
     return null;
   }
@@ -329,7 +331,10 @@ class OvertimeTabState extends State<OvertimeTab>
                         _otTimeBeginController.text.trim(),
                         _otTimeEndController.text.trim(),
                       );
-                      if (err != null) { showToast(err); return; }
+                      if (err != null) {
+                        showToast(err);
+                        return;
+                      }
                       Navigator.pop(ctx);
                       await _saveOtRegisters(context);
                     },
@@ -552,7 +557,10 @@ class OvertimeTabState extends State<OvertimeTab>
                 final newBegin = beginCtrl.text.trim();
                 final newEnd = endCtrl.text.trim();
                 final err = _validateTimes(newBegin, newEnd);
-                if (err != null) { showToast(err); return; }
+                if (err != null) {
+                  showToast(err);
+                  return;
+                }
                 Navigator.pop(ctx);
                 final overlay = context.loaderOverlay;
                 overlay.show();
@@ -988,8 +996,10 @@ class OvertimeTabState extends State<OvertimeTab>
                       ...failed.map((ot) {
                         final overlaps = failedOverlaps[ot] ?? [];
                         final overlapDetail = overlaps
-                            .map((o) =>
-                                '${DateFormat('yyyy-MM-dd').format(o.otDate)} ${o.otTimeBegin}–${o.otTimeEnd}')
+                            .map(
+                              (o) =>
+                                  '${DateFormat('yyyy-MM-dd').format(o.otDate)} ${o.otTimeBegin}–${o.otTimeEnd}',
+                            )
                             .join(', ');
                         return ListTile(
                           dense: true,
@@ -1106,6 +1116,7 @@ class OvertimeTabState extends State<OvertimeTab>
         children: [
           Container(
             width: 500,
+            height: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.surface,
@@ -1284,7 +1295,10 @@ class OvertimeTabState extends State<OvertimeTab>
                                 final validOts = <OtRegister>[];
                                 final invalidOts = <OtRegister>[];
                                 for (final ot in ots) {
-                                  final err = _validateTimes(ot.otTimeBegin, ot.otTimeEnd);
+                                  final err = _validateTimes(
+                                    ot.otTimeBegin,
+                                    ot.otTimeEnd,
+                                  );
                                   if (err != null) {
                                     invalidOts.add(ot);
                                   } else {
@@ -1523,7 +1537,13 @@ class OvertimeTabState extends State<OvertimeTab>
                   ),
                 ),
 
-                _OtSummaryBox(App.gValue.otRegisters),
+                const _OtScanGuide(),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: _OtSummaryBox(App.gValue.otRegisters),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1755,6 +1775,15 @@ class _OtSummaryBox extends StatelessWidget {
         .toSet()
         .length;
 
+    // Group by time slot "HH:mm - HH:mm", sorted by count desc
+    final slotCounts = <String, int>{};
+    for (final r in records) {
+      final key = '${r.otTimeBegin} - ${r.otTimeEnd}';
+      slotCounts[key] = (slotCounts[key] ?? 0) + 1;
+    }
+    final slots = slotCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
     const labelStyle = TextStyle(fontSize: 12, color: AppColors.textSecondary);
     const valueStyle = TextStyle(
       fontSize: 12,
@@ -1783,12 +1812,163 @@ class _OtSummaryBox extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           row('Total Records', '$totalRecords'),
           row('Total Employees', '$totalEmployees'),
           row('Total OT Dates', '$totalDates'),
+          if (slots.isNotEmpty) ...[
+            const Divider(height: 12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'By Time Slot',
+                style: labelStyle.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            for (final e in slots) row(e.key, '${e.value}'),
+          ],
         ],
       ),
+    );
+  }
+}
+
+// ── Scan Guide ────────────────────────────────────────────────────────────────
+
+class _OtScanGuide extends StatelessWidget {
+  const _OtScanGuide();
+
+  static const _steps = [
+    (
+      icon: Icons.search,
+      title: 'Bước 1 — Kiểm tra trước khi scan',
+      body:
+          'Kiểm tra & tách riêng các phiếu bất thường: nhòe, bong tróc mực ở vị trí có mã QR: Phần mềm không đọc được\n'
+          'Chia thành từng nhóm , tối đa 20 tờ.',
+    ),
+    (
+      icon: Icons.scanner,
+      title: 'Bước 2 — Scan & đặt tên file',
+      body:
+          'Scan phiếu OT, lưu file PDF theo định dạng: '
+          'YYYYMMDD-Bộ phận.PDF\n'
+          'Ví dụ: 20260719-Sewing.PDF\n'
+          'Lưu ý : Tên file không được trùng',
+    ),
+    (
+      icon: Icons.folder_copy,
+      title: 'Bước 3 — Copy file vào thư mục',
+      body:
+          'Copy PDF vào:\n'
+          'T:\\03.Department\\01.Operation Management\\'
+          '03.HR-GA\\01.HR\\4. EMPLOYEE\\7.OT request\\02.Pdf',
+    ),
+    (
+      icon: Icons.autorenew,
+      title: 'Bước 4 — Phần mềm tự đọc (mỗi 10 phút)',
+      body:
+          '• File đọc OK → tự move file vào thư mục lưu trữ: ...7.OT request\\01.Imported\n'
+          '• File lỗi → đổi tên thành ERROR_PageNumberError_...PDF\n'
+          '  → Kiểm tra thủ công trang bị lỗi, sau đó xử lý bằng 1 trong 2 cách:\n'
+          '  (a) Nhập thủ công từng phiếu bằng nút Add\n'
+          '  (b) Nhập hàng loạt bằng nút Import (file Excel theo template)',
+    ),
+    (
+      icon: Icons.table_chart,
+      title: 'Bước 5 — Xem & xuất dữ liệu',
+      body: 'Lọc, xem và xuất dữ liệu đăng ký OT tại tab Overtime trên App.',
+    ),
+  ];
+
+  void _showDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: AppColors.info, size: 20),
+            SizedBox(width: 8),
+            Text('Hướng dẫn upload phiếu đăng ký OT'),
+          ],
+        ),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (int i = 0; i < _steps.length; i++) ...[
+                _StepRow(_steps[i].icon, _steps[i].title, _steps[i].body),
+                if (i < _steps.length - 1)
+                  const Divider(height: 16, thickness: 0.5),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: TextButton.icon(
+        onPressed: () => _showDialog(context),
+        icon: const Icon(Icons.help_outline, size: 16, color: AppColors.info),
+        label: const Text(
+          'Hướng dẫn upload phiếu OT',
+          style: TextStyle(fontSize: 12, color: AppColors.infoText),
+        ),
+      ),
+    );
+  }
+}
+
+class _StepRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String body;
+  const _StepRow(this.icon, this.title, this.body);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.infoText),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.infoText,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                body,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

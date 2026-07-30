@@ -101,17 +101,23 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
       (
         'Overtime',
         () async {
-          App.gValue.otRegisters = await App.mongoDb.getOvertime(
-            App.gValue.dateRangeOvertime,
+          final loadRange = MyFunctions.rangeFromMaxDate(
+            await App.mongoDb.getMaxOtDate(),
           );
+          App.gValue.otRegisters = await App.mongoDb.getOvertime(loadRange);
+          // gValue.dateRangeOvertime stays as today — calendar shows today
         },
       ),
       (
         'Shift',
         () async {
-          App.gValue.shiftRegisters = await App.mongoDb.getShiftRegisters(
-            App.gValue.dateRangeShift,
+          final loadRange = MyFunctions.rangeFromMaxDate(
+            await App.mongoDb.getMaxShiftDate(),
           );
+          App.gValue.shiftRegisters = await App.mongoDb.getShiftRegisters(
+            loadRange,
+          );
+          // gValue.dateRangeShift stays as today — calendar shows today
         },
       ),
       (
