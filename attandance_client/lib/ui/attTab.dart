@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:attandance_client/appColors.dart';
 import 'package:attandance_client/ui/contextMenu.dart';
 import 'package:attandance_client/appLogger.dart';
@@ -734,11 +735,18 @@ class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
         final row = i + 2;
         sheet.getRangeByIndex(row, 1).setNumber((i + 1).toDouble());
         sheet.getRangeByIndex(row, 2).setText(e.empId ?? '');
-        sheet.getRangeByIndex(row, 3).setNumber((e.attFingerId ?? 0).toDouble());
+        sheet
+            .getRangeByIndex(row, 3)
+            .setNumber((e.attFingerId ?? 0).toDouble());
         sheet.getRangeByIndex(row, 4).setText(e.name ?? '');
         sheet.getRangeByIndex(row, 5).setText(e.group ?? '');
       }
-      MyFunctions.createTable(sheet, absent.length + 1, headers.length, 'AbsentList');
+      MyFunctions.createTable(
+        sheet,
+        absent.length + 1,
+        headers.length,
+        'AbsentList',
+      );
       await MyFunctions.saveAndOpenWorkbook(
         workbook,
         MyFunctions.exportFileName('AbsentList'),
@@ -962,15 +970,24 @@ class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
         final r = rows[i];
         final row = i + 2;
         sheet.getRangeByIndex(row, 1).setNumber((i + 1).toDouble());
-        sheet.getRangeByIndex(row, 2).setText(DateFormat('dd/MM/yyyy').format(r.date));
+        sheet
+            .getRangeByIndex(row, 2)
+            .setText(DateFormat('dd/MM/yyyy').format(r.date));
         sheet.getRangeByIndex(row, 3).setText(r.empId);
         sheet.getRangeByIndex(row, 4).setText(r.name);
         sheet.getRangeByIndex(row, 5).setText(r.group);
-        sheet.getRangeByIndex(row, 6).setText(
-          r.checkins.map((t) => DateFormat('HH:mm').format(t)).join(', '),
-        );
+        sheet
+            .getRangeByIndex(row, 6)
+            .setText(
+              r.checkins.map((t) => DateFormat('HH:mm').format(t)).join(', '),
+            );
       }
-      MyFunctions.createTable(sheet, rows.length + 1, headers.length, 'MissingCheckin');
+      MyFunctions.createTable(
+        sheet,
+        rows.length + 1,
+        headers.length,
+        'MissingCheckin',
+      );
       await MyFunctions.saveAndOpenWorkbook(
         workbook,
         MyFunctions.exportFileName('MissingCheckin'),
@@ -1134,6 +1151,7 @@ class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
         children: [
           Container(
             width: 500,
+            height: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.surface,
@@ -1480,26 +1498,35 @@ class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
                     ],
                   ),
                 ),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceAlt,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Sum by machine:\nTotal: ${App.gValue.attLogs.length}\n${getAttLogSummaryByMachine(App.gValue.attLogs)}",
-                      ),
-                      VerticalDivider(color: Colors.blue),
-                      Text(
-                        "Employee checkin summary:\n${getEmployeeCheckinSummary(App.gValue.attLogs, App.gValue.employees)}",
-                      ),
-                    ],
+                Flexible(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _MachinePieChart(
+                            slots: getMachineSlots(App.gValue.attLogs),
+                            total: App.gValue.attLogs.length,
+                          ),
+                        ),
+                        // VerticalDivider(color: Colors.blue),
+                        Expanded(
+                          child: _CheckinPieChart(
+                            data: getEmployeeCheckinSummary(
+                              App.gValue.attLogs,
+                              App.gValue.employees,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1642,45 +1669,234 @@ class AttTabState extends State<AttTab> with AutomaticKeepAliveClientMixin {
     );
   }
 
-  String getAttLogSummaryByMachine(List<AttLog> attLogs) {
-    String summary = '';
-    Map<int, int> machineCounts = {};
-    for (var log in attLogs) {
-      machineCounts[log.machineNo] = (machineCounts[log.machineNo] ?? 0) + 1;
+  List<(int machine, int count)> getMachineSlots(List<AttLog> attLogs) {
+    final counts = <int, int>{};
+    for (final log in attLogs) {
+      counts[log.machineNo] = (counts[log.machineNo] ?? 0) + 1;
     }
-    for (var entry in machineCounts.entries) {
-      summary += 'Machine ${entry.key}: ${entry.value} logs\n';
-    }
-    // sort summary by machine number
-    List<String> summaryLines = summary.trim().split('\n');
-    summaryLines.sort((a, b) {
-      int machineA = int.parse(a.split(' ')[1].replaceAll(':', ''));
-      int machineB = int.parse(b.split(' ')[1].replaceAll(':', ''));
-      return machineA.compareTo(machineB);
-    });
-    return summaryLines.join('\n');
+    final sorted = counts.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return [for (final e in sorted) (e.key, e.value)];
   }
 
-  getEmployeeCheckinSummary(List<AttLog> attLogs, List<Employee> employees) {
-    // count employee have work status like 'Working', 'Maternity leave', 'Resigned'
-    // count presence of each employee in attLogs, if employee have at least 1 log in attLogs, count as present, otherwise count as absent (exclude 'Maternity leave' and 'Resigned' employees)
-    // return map  : Total employees Active : X, Present: Y, Absent: Z, Maternity leave: B
-    int activeEmployees = employees
-        .where(
-          (e) =>
-              e.workStatus!.contains('Working') ||
-              e.workStatus!.contains('Maternity leave'),
-        )
-        .length;
-    int maternityLeaveEmployees = employees
+  ({int present, int absent, int maternity}) getEmployeeCheckinSummary(
+    List<AttLog> attLogs,
+    List<Employee> employees,
+  ) {
+    final active = employees.where(
+      (e) =>
+          e.workStatus!.contains('Working') ||
+          e.workStatus!.contains('Maternity leave'),
+    );
+    final maternity = active
         .where((e) => e.workStatus!.contains('Maternity leave'))
         .length;
-    int presentEmployees = attLogs.map((log) => log.empId).toSet().length;
-    int absentEmployees =
-        activeEmployees - presentEmployees - maternityLeaveEmployees;
-    return 'Active: $activeEmployees\nPresent: $presentEmployees\nAbsent: $absentEmployees\nMaternity leave: $maternityLeaveEmployees';
+    final present = attLogs.map((l) => l.empId).toSet().length;
+    final absent = active.length - present - maternity;
+    return (
+      present: present,
+      absent: absent.clamp(0, 99999),
+      maternity: maternity,
+    );
   }
 }
+
+// ── Checkin Pie Chart ─────────────────────────────────────────────────────────
+
+class _CheckinPieChart extends StatelessWidget {
+  const _CheckinPieChart({required this.data});
+  final ({int present, int absent, int maternity}) data;
+
+  @override
+  Widget build(BuildContext context) {
+    const labelStyle = TextStyle(fontSize: 11, color: AppColors.textSecondary);
+    final total = data.present + data.absent + data.maternity;
+    Widget legend(Color color, String label, int count) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text('$label: $count', style: labelStyle),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Employee Status',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        Text('Total Active: $total', style: labelStyle),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 90,
+                height: 90,
+                child: CustomPaint(
+                  painter: _PieChartPainter(
+                    slices: [data.present, data.absent, data.maternity],
+                    colors: [Colors.green, Colors.red, Colors.purple],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      legend(Colors.green, 'Present', data.present),
+                      legend(Colors.red, 'Absent', data.absent),
+                      legend(Colors.purple, 'Maternity', data.maternity),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MachinePieChart extends StatelessWidget {
+  const _MachinePieChart({required this.slots, required this.total});
+  final List<(int machine, int count)> slots;
+  final int total;
+
+  static const _palette = [
+    Color(0xFF4C9BE8),
+    Color(0xFFE8834C),
+    Color(0xFF4CE8A0),
+    Color(0xFFE84C4C),
+    Color(0xFFB04CE8),
+    Color(0xFFE8D44C),
+    Color(0xFF4CE8E0),
+    Color(0xFFE84CA0),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    const labelStyle = TextStyle(fontSize: 11, color: AppColors.textSecondary);
+    Widget legend(Color color, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: labelStyle),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Logs by Machine',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        ),
+        Text('Total: $total', style: labelStyle),
+        const SizedBox(height: 6),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 90,
+                height: 90,
+                child: CustomPaint(
+                  painter: _PieChartPainter(
+                    slices: [for (final s in slots) s.$2],
+                    colors: [
+                      for (int i = 0; i < slots.length; i++)
+                        _palette[i % _palette.length],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (int i = 0; i < slots.length; i++)
+                        legend(
+                          _palette[i % _palette.length],
+                          'Machine ${slots[i].$1}: ${slots[i].$2}',
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PieChartPainter extends CustomPainter {
+  const _PieChartPainter({required this.slices, required this.colors});
+  final List<int> slices;
+  final List<Color> colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = slices.fold(0, (a, b) => a + b);
+    if (total == 0) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(center: center, radius: size.width / 2);
+    double startAngle = -math.pi / 2;
+
+    for (int i = 0; i < slices.length; i++) {
+      if (slices[i] <= 0) continue;
+      final sweep = 2 * math.pi * slices[i] / total;
+      canvas.drawArc(
+        rect,
+        startAngle,
+        sweep,
+        true,
+        Paint()
+          ..color = colors[i]
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawArc(
+        rect,
+        startAngle,
+        sweep,
+        true,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+      startAngle += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PieChartPainter old) =>
+      slices != old.slices || colors != old.colors;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class AttLogDataSource extends DataGridSource {
   /// Creates the employee data source class with required details.
@@ -1781,7 +1997,9 @@ class AttLogDataSource extends DataGridSource {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Text(
             cell.value is DateTime
-                ? DateFormat('dd/MM/yyyy HH:mm:ss').format(cell.value as DateTime)
+                ? DateFormat(
+                    'dd/MM/yyyy HH:mm:ss',
+                  ).format(cell.value as DateTime)
                 : cell.value.toString(),
           ),
         );

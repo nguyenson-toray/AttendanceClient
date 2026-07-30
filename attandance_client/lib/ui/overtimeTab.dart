@@ -142,6 +142,11 @@ class OvertimeTabState extends State<OvertimeTab>
 
   void clearFilters() => _otDataSource.clearFilters();
 
+  void updatePickerRange(List<DateTime> range) {
+    _pickerController.selectedRange = PickerDateRange(range[0], range[1]);
+    setState(() {});
+  }
+
   void refreshData() {
     setState(() {
       _isFilteringOverlaps = false;
@@ -1817,7 +1822,7 @@ class _OtSummaryBox extends StatelessWidget {
           row('Total Records', '$totalRecords'),
           row('Total Employees', '$totalEmployees'),
           row('Total OT Dates', '$totalDates'),
-          if (slots.isNotEmpty) ...[
+          if (slots.isNotEmpty && App.gValue.timesheetSettings.sumOtTimeSlot) ...[
             const Divider(height: 12),
             Padding(
               padding: const EdgeInsets.only(bottom: 4),

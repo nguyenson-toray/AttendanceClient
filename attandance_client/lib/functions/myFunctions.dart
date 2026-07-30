@@ -111,9 +111,9 @@ class MyFunctions {
     context.loaderOverlay.hide();
   }
 
-  static List<DateTime> rangeFromMaxDate(DateTime? maxDate) {
+  static List<DateTime> rangeFromMaxDate(DateTime? maxDate, {int days = 14}) {
     final end = (maxDate ?? DateTime.now()).toEndDay();
-    final start = end.subtract(const Duration(days: 14)).toBeginDay();
+    final start = end.subtract(Duration(days: days)).toBeginDay();
     return [start, end];
   }
 

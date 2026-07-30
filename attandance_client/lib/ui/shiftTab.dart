@@ -126,6 +126,11 @@ class ShiftTabState extends State<ShiftTab>
 
   void clearFilters() => _shiftDataSource.clearFilters();
 
+  void updatePickerRange(List<DateTime> range) {
+    _pickerController.selectedRange = PickerDateRange(range[0], range[1]);
+    setState(() {});
+  }
+
   void refreshData() {
     setState(() {
       _isFilteringOverlaps = false;

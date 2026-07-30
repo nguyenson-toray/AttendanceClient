@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:attandance_client/appColors.dart';
 import 'package:attandance_client/ui/contextMenu.dart';
 import 'package:attandance_client/main.dart';
@@ -461,6 +462,8 @@ class EmployeeTabState extends State<EmployeeTab>
                   foregroundColor: AppColors.onPrimary,
                 ),
               ),
+              const SizedBox(width: 16),
+              Expanded(child: _WorkStatusBar(employees: App.gValue.employees)),
             ],
           ),
         ),
@@ -586,6 +589,121 @@ class EmployeeTabState extends State<EmployeeTab>
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WorkStatusBar extends StatelessWidget {
+  const _WorkStatusBar({required this.employees});
+  final List<Employee> employees;
+
+  static const _statusOrder = ['Working', 'Maternity', 'Resigned'];
+  static const _statusColors = {
+    'Working': Color(0xFF4CAF50),
+    'Maternity': Color.fromARGB(255, 234, 0, 255),
+    'Resigned': Color(0xFF9E9E9E),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (employees.isEmpty) return const SizedBox.shrink();
+
+    final counts = <String, int>{};
+    for (final e in employees) {
+      final s = e.workStatus ?? 'Unknown';
+      counts[s] = (counts[s] ?? 0) + 1;
+    }
+
+    // Sort by predefined order, then alphabetically for unknowns
+    final ordered = counts.entries.toList()
+      ..sort((a, b) {
+        final ia = _statusOrder.indexOf(a.key);
+        final ib = _statusOrder.indexOf(b.key);
+        if (ia == -1 && ib == -1) return a.key.compareTo(b.key);
+        if (ia == -1) return 1;
+        if (ib == -1) return -1;
+        return ia.compareTo(ib);
+      });
+
+    final total = employees.length;
+    const labelStyle = TextStyle(fontSize: 11, color: AppColors.textSecondary);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Work Status (total: $total)', style: labelStyle),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 18,
+            child: CustomPaint(
+              painter: _StackedBarPainter(
+                segments: ordered.map((e) => e.value).toList(),
+                colors: ordered
+                    .map((e) => _statusColors[e.key] ?? const Color(0xFF4C9BE8))
+                    .toList(),
+                total: total,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 10,
+          children: [
+            for (final e in ordered)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _statusColors[e.key] ?? const Color(0xFF4C9BE8),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text('${e.key}: ${e.value}', style: labelStyle),
+                ],
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StackedBarPainter extends CustomPainter {
+  const _StackedBarPainter({
+    required this.segments,
+    required this.colors,
+    required this.total,
+  });
+  final List<int> segments;
+  final List<Color> colors;
+  final int total;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (total == 0) return;
+    double x = 0;
+    for (int i = 0; i < segments.length; i++) {
+      final w = segments[i] / total * size.width;
+      final rect = Rect.fromLTWH(x, 0, math.max(w, 0), size.height);
+      canvas.drawRect(rect, Paint()..color = colors[i]);
+      x += w;
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StackedBarPainter old) =>
+      segments != old.segments || total != old.total;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class EmployeeDataSource extends DataGridSource {
   /// Creates the employee data source class with required details.

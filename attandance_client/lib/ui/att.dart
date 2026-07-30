@@ -103,9 +103,11 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
         () async {
           final loadRange = MyFunctions.rangeFromMaxDate(
             await App.mongoDb.getMaxOtDate(),
+            days: 14,
           );
           App.gValue.otRegisters = await App.mongoDb.getOvertime(loadRange);
-          // gValue.dateRangeOvertime stays as today — calendar shows today
+          App.gValue.dateRangeOvertime = loadRange;
+          _overtimeKey.currentState?.updatePickerRange(loadRange);
         },
       ),
       (
@@ -113,11 +115,13 @@ class _AttState extends State<Att> with SingleTickerProviderStateMixin {
         () async {
           final loadRange = MyFunctions.rangeFromMaxDate(
             await App.mongoDb.getMaxShiftDate(),
+            days: 30,
           );
           App.gValue.shiftRegisters = await App.mongoDb.getShiftRegisters(
             loadRange,
           );
-          // gValue.dateRangeShift stays as today — calendar shows today
+          App.gValue.dateRangeShift = loadRange;
+          _shiftKey.currentState?.updatePickerRange(loadRange);
         },
       ),
       (

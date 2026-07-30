@@ -5,6 +5,7 @@ class TimesheetSettings {
   int workingBlockMinute;
   bool allowOtInRestTime;
   List<String> excludeEmpIds;
+  bool sumOtTimeSlot;
 
   TimesheetSettings({
     this.minOtMinute = 30,
@@ -12,6 +13,7 @@ class TimesheetSettings {
     this.workingBlockMinute = 1,
     this.allowOtInRestTime = false,
     this.excludeEmpIds = const [],
+    this.sumOtTimeSlot = false,
   });
 
   Map<String, dynamic> toMap() => {
@@ -35,6 +37,7 @@ class TimesheetSettings {
       workingBlockMinute: (map['workingBlockMinute'] as num?)?.toInt() ?? 1,
       allowOtInRestTime: (map['allowOtInRestTime'] as bool?) ?? false,
       excludeEmpIds: excludeList,
+      sumOtTimeSlot: (map['sumOtTimeSlot'] as bool?) ?? false,
     );
   }
 
