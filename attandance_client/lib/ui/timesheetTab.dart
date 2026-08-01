@@ -4,6 +4,7 @@ import 'package:attandance_client/functions/timesheetFunctions.dart';
 import 'package:attandance_client/main.dart';
 import 'package:attandance_client/model/attLog.dart';
 import 'package:attandance_client/model/otRegister.dart';
+import 'package:attandance_client/model/shiftRegister.dart';
 import 'package:attandance_client/model/timeSheetDate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
@@ -105,6 +106,8 @@ class TimesheetTabState extends State<TimesheetTab>
       final List<OtRegister> otRegisters = await App.mongoDb.getOvertime(
         App.gValue.dateRangeTimesheet,
       );
+      final List<ShiftRegister> shiftRegisters =
+          await App.mongoDb.getShiftRegisters(App.gValue.dateRangeTimesheet);
 
       if (!mounted) return;
       showToast(
@@ -116,7 +119,7 @@ class TimesheetTabState extends State<TimesheetTab>
       final tsResult = TimesheetFunctions.createTimesheets(
         employees: App.gValue.employees,
         attLogs: attLogs,
-        shiftRegisters: App.gValue.shiftRegisters,
+        shiftRegisters: shiftRegisters,
         otRegisters: otRegisters,
         dateRange: App.gValue.dateRangeTimesheet,
       );

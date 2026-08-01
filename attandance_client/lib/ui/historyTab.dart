@@ -113,8 +113,9 @@ class _HistoryTabState extends State<HistoryTab>
                         DateTime.now().toEndDay(),
                       ];
                     } else {
-                      final parsed =
-                          MyFunctions.extractDateRangeFromPicker(value);
+                      final parsed = MyFunctions.extractDateRangeFromPicker(
+                        value,
+                      );
                       if (parsed.length == 2)
                         App.gValue.dateRangeHistory = parsed;
                     }
@@ -156,10 +157,11 @@ class _HistoryTabState extends State<HistoryTab>
                   onPressed: () async {
                     final ctx = context;
                     final overlay = ctx.loaderOverlay;
-                    final useFiltered = await MyFunctions.showFilterExportDialog(
-                      ctx,
-                      _histDataSource,
-                    );
+                    final useFiltered =
+                        await MyFunctions.showFilterExportDialog(
+                          ctx,
+                          _histDataSource,
+                        );
                     if (useFiltered == null || !mounted) return;
                     overlay.show();
                     await MyFunctions.exportGridToExcel(
@@ -200,6 +202,20 @@ class _HistoryTabState extends State<HistoryTab>
                   allowFiltering: true,
                   allowSorting: true,
                   columnWidthMode: ColumnWidthMode.fill,
+                  onQueryRowHeight: (details) {
+                    if (details.rowIndex == 0) return 48;
+                    final rows = _histDataSource.effectiveRows;
+                    final idx = details.rowIndex - 1;
+                    if (idx < 0 || idx >= rows.length) return 48;
+                    final log = rows[idx]
+                        .getCells()
+                        .firstWhere((c) => c.columnName == 'log')
+                        .value
+                        .toString();
+                    // ~80 chars per line at typical column width, 20px per line + 16px padding
+                    final lines = (log.length / 80).ceil().clamp(1, 6);
+                    return lines * 20.0 + 16;
+                  },
                   highlightRowOnHover: true,
                   showColumnHeaderIconOnHover: true,
                   gridLinesVisibility: GridLinesVisibility.horizontal,
