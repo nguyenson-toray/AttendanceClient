@@ -63,7 +63,7 @@ class OvertimeTabState extends State<OvertimeTab>
     final dataIndex = _otDataSource.rows.indexOf(row);
     if (dataIndex < 0) return;
     final recordId = _otDataSource.getId(dataIndex);
-    final otDate = DateTime.tryParse(otDateStr) ?? DateTime.now();
+    final otDate = DateFormat('dd/MM/yyyy').tryParse(otDateStr) ?? DateTime.now();
     final pos = details.globalPosition;
     showContextMenu(
       context,

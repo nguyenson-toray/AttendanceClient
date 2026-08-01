@@ -1,7 +1,7 @@
 # Timesheet Algorithm — `timesheetFunctions.dart`
 
 > Tài liệu này mô tả toàn bộ thuật toán tính timesheet theo code hiện tại.  
-> Cập nhật: 2026-06-29
+> Cập nhật: 2026-08-01
 
 ---
 
@@ -168,7 +168,9 @@ Thứ tự ưu tiên (sau cùng thắng):
 
 **Chủ nhật — override giờ từ OT register:**
 
-Nếu nhân viên có OT register vào Chủ nhật, `shiftBegin`/`shiftEnd` được lấy từ `otTimeBegin`/`otTimeEnd` của record có **`id` lớn nhất** (nhất quán với logic dedup OT). Nếu không có OT register → giữ nguyên Day 08:00-17:00.
+Nếu nhân viên có OT register vào Chủ nhật, `shiftBegin`/`shiftEnd` được lấy từ **union của tất cả OT registers**: `shiftBegin = min(otTimeBegin)`, `shiftEnd = max(otTimeEnd)`. Nếu không có OT register → giữ nguyên Day 08:00-17:00.
+
+> Trước đây chỉ dùng record có `id` lớn nhất, dẫn đến mất giờ khi có ≥2 phiếu OT.
 
 ---
 
@@ -362,13 +364,13 @@ otFinal    = 0    ← không có giờ thực tế
 
 ## 8. Xử lý ngày Chủ nhật
 
-Áp dụng **sau** khi tính normalHours và OT (ghi đè):
+Áp dụng **sau** khi tính normalHours và OT — **ghi đè toàn bộ** kết quả `_calcOtRecords`:
 
 ```
-if otApproved > 0:
-    otApproved = shiftEnd − shiftBegin       [dùng shiftBegin/shiftEnd đã override từ OT register]
+if empId có OT register:
+    otApproved = shiftEnd − shiftBegin       [union của tất cả OT registers]
     if shiftBegin.hour < 12 AND shiftEnd.hour > 13:
-        otApproved −= 1                      [trừ giờ nghỉ trưa]
+        otApproved −= 1                      [trừ giờ nghỉ trưa cố định]
 
 otActual    = normalHours                    [toàn bộ giờ làm chuyển thành OT]
 normalHours = 0
@@ -381,8 +383,9 @@ if otActual > 0:
 ```
 
 > `restBegin/restEnd` cho Chủ nhật luôn là 12:00/13:00 (cố định).  
-> `shiftBegin/shiftEnd` là từ OT register (nếu có), không phụ thuộc vào ca gốc.  
-> Nếu nhân viên không có OT register → `otApproved = 0` → `otFinal = 0`.
+> `shiftBegin/shiftEnd` là union của **tất cả** OT registers: `min(begin)` / `max(end)`.  
+> Nếu nhân viên không có OT register → `otApproved = 0` → `otFinal = 0`.  
+> Ví dụ: 2 phiếu 07:00–12:00 và 13:00–17:00 → union 07:00–17:00 → `otApproved = 9h`.
 
 ---
 
@@ -512,7 +515,8 @@ otIndex    → Map<dayKey, Map<empId, List<OtRegister>>>
 for (date, employee):
     Xác định ca: Day → Canteen(resolve) → Shift1/2 → Sunday→Day
     Nếu Sunday + có OT register:
-        shiftBegin/End từ OT register (record id lớn nhất)
+        shiftBegin = min(otTimeBegin) của tất cả OT registers
+        shiftEnd   = max(otTimeEnd)   của tất cả OT registers
     restBegin/End: Sunday=12:00/13:00 cố định; weekday=shiftBegin+4h+restHour
 
     isPregnant / isYoungChild → shiftEnd −= 1h

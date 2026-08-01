@@ -249,16 +249,23 @@ class TimesheetFunctions {
           p.endMin,
         );
 
-        // Sunday → override shift window from OT register if employee has one
-        // Use same record selection as OT dedup: highest id wins
+        // Sunday → override shift window from OT registers if employee has any.
+        // Use the union of all registers: earliest begin and latest end.
         if (date.weekday == DateTime.sunday) {
           final sunOt = otByEmp[emp.empId] ?? [];
-          if (sunOt.isNotEmpty) {
-            final sunRec = sunOt.reduce((a, b) => a.id >= b.id ? a : b);
-            shiftBegin =
-                _parseShiftTime(date, sunRec.otTimeBegin) ?? shiftBegin;
-            shiftEnd = _parseShiftTime(date, sunRec.otTimeEnd) ?? shiftEnd;
+          DateTime? earliest, latest;
+          for (final rec in sunOt) {
+            final b = _parseShiftTime(date, rec.otTimeBegin);
+            final e = _parseShiftTime(date, rec.otTimeEnd);
+            if (b != null && (earliest == null || b.isBefore(earliest))) {
+              earliest = b;
+            }
+            if (e != null && (latest == null || e.isAfter(latest))) {
+              latest = e;
+            }
           }
+          if (earliest != null) shiftBegin = earliest;
+          if (latest != null) shiftEnd = latest;
         }
 
         // Rest window: always 12:00-13:00 on Sunday (regardless of OT register time);
@@ -512,12 +519,9 @@ class TimesheetFunctions {
           noteCheckin = _note(noteCheckin, 'Chế độ con nhỏ');
         }
         // ── Sunday: all worked hours become OT ────────────────────────────
+        // _calcOtRecords result is always overridden here for Sunday.
+        // shiftBegin/shiftEnd are the union of all OT registers (set above).
         if (date.weekday == DateTime.sunday) {
-          // otApproved from _calcOtRecords may be 0 when the OT register
-          // exactly matches the shift window (e.g. 08:00-12:00), because
-          // that record is neither "before shift" nor "after shift" nor
-          // "full-day spanning noon". Use shiftEnd−shiftBegin instead,
-          // guarded by whether the employee has any OT register for this day.
           if (empIdOT.contains(emp.empId)) {
             otApproved = shiftEnd.difference(shiftBegin).inMinutes / 60.0;
             if (shiftBegin.hour < 12 && shiftEnd.hour > 13) otApproved -= 1;
