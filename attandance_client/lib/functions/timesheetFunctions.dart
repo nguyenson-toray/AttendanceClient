@@ -525,12 +525,23 @@ class TimesheetFunctions {
           if (empIdOT.contains(emp.empId)) {
             otApproved = shiftEnd.difference(shiftBegin).inMinutes / 60.0;
             if (shiftBegin.hour < 12 && shiftEnd.hour > 13) otApproved -= 1;
+            // Warn when multiple OT registers: list each slot so HR can verify
+            final sunOtRecs = otByEmp[emp.empId] ?? [];
+            if (sunOtRecs.length >= 2) {
+              final slots = sunOtRecs
+                  .map((r) => '${r.otTimeBegin}-${r.otTimeEnd}')
+                  .join(', ');
+              noteSunday = _note(
+                noteSunday,
+                '${sunOtRecs.length} phiếu OT CN: $slots',
+              );
+            }
           }
           otActual = normalHrs;
           normalHrs = 0;
           otFinal = otActual.clamp(0.0, otApproved);
           if (otActual > 0) {
-            noteSunday = 'OT ngày CN';
+            noteSunday = _note(noteSunday, 'OT ngày CN');
             if (otActual > 4 &&
                 firstIn != null &&
                 lastOut != null &&
