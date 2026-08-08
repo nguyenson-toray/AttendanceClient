@@ -439,6 +439,19 @@ class MyFunctions {
       try {
         return DateTime.parse(s);
       } catch (_) {
+        // Excel DateTime cell → numeric serial (days since 1899-12-30)
+        final serial = double.tryParse(s);
+        if (serial != null && serial > 1) {
+          final base = DateTime(1899, 12, 30);
+          final days = serial.floor();
+          final totalSec = ((serial - days) * 86400).round();
+          final date = base.add(Duration(days: days));
+          return DateTime(
+            date.year, date.month, date.day,
+            totalSec ~/ 3600,
+            (totalSec % 3600) ~/ 60,
+          );
+        }
         return null;
       }
     }
